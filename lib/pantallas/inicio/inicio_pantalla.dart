@@ -14,6 +14,7 @@ import '../agenda/agenda_pantalla.dart';
 import '../notificaciones/notificaciones_pantalla.dart';
 import '../clientes/clientes_pantalla.dart';
 import '../ventas/ventas_pantalla.dart';
+import '../centro_control/centro_control_comercial_pantalla.dart';
 import '../../widgets/kpi_card.dart';
 import '../../widgets/dashboard_header.dart';
 import '../../servicios/notificaciones_servicio.dart';
@@ -1688,6 +1689,17 @@ class _InicioPantallaState extends State<InicioPantalla> {
                   if (tieneAccesoAdministrador)
                     itemDrawer(
                       context: context,
+                      titulo: 'Centro de Control Comercial',
+                      icono: Icons.monitor_heart_rounded,
+                      color: Colors.teal,
+                      onTap: () => navegarDesdeDrawer(
+                        context,
+                        const CentroControlComercialPantalla(),
+                      ),
+                    ),
+                  if (tieneAccesoAdministrador)
+                    itemDrawer(
+                      context: context,
                       titulo: 'Servicios',
                       icono: Icons.build_circle_rounded,
                       color: const Color(0xFF1565C0),
@@ -1925,6 +1937,17 @@ class _InicioPantallaState extends State<InicioPantalla> {
                 tarjetaSeguimientosDashboard(),
               ],
             ),
+            if (tieneAccesoAdministrador) ...[
+              const SizedBox(height: 18),
+              moduloAcceso(
+                context: context,
+                titulo: 'Centro de Control Comercial',
+                descripcion: 'Supervisa la operación del equipo en tiempo real',
+                icono: Icons.monitor_heart_rounded,
+                pantalla: const CentroControlComercialPantalla(),
+                color: Colors.teal,
+              ),
+            ],
             graficosComerciales(),
             const SizedBox(height: 16),
           ],

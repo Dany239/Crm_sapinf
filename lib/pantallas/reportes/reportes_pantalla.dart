@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,6 +10,7 @@ import '../ventas/ventas_pantalla.dart';
 import '../clientes/clientes_pantalla.dart';
 import '../seguimientos/seguimientos_pantalla.dart';
 import '../../servicios/servicios_pantalla.dart';
+import '../../servicios/exportacion_reportes_servicio.dart';
 
 class ReportesPantalla extends StatefulWidget {
   const ReportesPantalla({super.key});
@@ -18,6 +21,9 @@ class ReportesPantalla extends StatefulWidget {
 
 class _ReportesPantallaState extends State<ReportesPantalla> {
   DateTimeRange? rangoSeleccionado;
+  String? vendedorIdExportacion;
+  String vendedorNombreExportacion = 'Todos los vendedores';
+  bool exportando = false;
 
   bool perteneceAlRango(
     Map<String, dynamic> data,
@@ -343,6 +349,8 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                 const SizedBox(height: 20),
                 _montoTotal(),
                 const SizedBox(height: 24),
+                _centroExportacion(),
+                const SizedBox(height: 24),
                 Text(
                   'Rendimiento por vendedor',
                   style: GoogleFonts.poppins(
@@ -378,6 +386,311 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<DatosReporteExportacion> _datosParaExportar() async {
+    final resultados = await Future.wait([
+      FirebaseFirestore.instance.collection('ventas').get(),
+      FirebaseFirestore.instance.collection('seguimientos').get(),
+      FirebaseFirestore.instance.collection('clientes').get(),
+    ]);
+
+    List<Map<String, dynamic>> filtrar(
+      QuerySnapshot<Map<String, dynamic>> snapshot,
+    ) {
+      return snapshot.docs.map((doc) => doc.data()).where((data) {
+        final rango = rangoSeleccionado;
+        if (rango != null && !perteneceAlRango(data, rango)) return false;
+        final vendedorId = vendedorIdExportacion;
+        if (vendedorId != null && data['vendedorId'] != vendedorId) {
+          return false;
+        }
+        return true;
+      }).toList();
+    }
+
+    return DatosReporteExportacion(
+      ventas: filtrar(resultados[0]),
+      seguimientos: filtrar(resultados[1]),
+      clientes: filtrar(resultados[2]),
+      periodo: textoFiltroActual(),
+      vendedor: vendedorNombreExportacion,
+    );
+  }
+
+  Future<void> _exportarReporte(String tipo) async {
+    if (exportando) return;
+    setState(() => exportando = true);
+
+    try {
+      final datos = await _datosParaExportar();
+      final fechaArchivo = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+      late final List<int> bytes;
+      late final String nombreArchivo;
+      late final String mimeType;
+
+      if (tipo == 'excel') {
+        bytes = ExportacionReportesServicio.generarExcel(datos);
+        nombreArchivo = 'reporte_comercial_$fechaArchivo.xlsx';
+        mimeType =
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      } else {
+        final ejecutivo = tipo == 'ejecutivo';
+        bytes = await ExportacionReportesServicio.generarPdf(
+          datos,
+          ejecutivo: ejecutivo,
+        );
+        nombreArchivo = ejecutivo
+            ? 'reporte_ejecutivo_$fechaArchivo.pdf'
+            : 'reporte_comercial_$fechaArchivo.pdf';
+        mimeType = 'application/pdf';
+      }
+
+      await ExportacionReportesServicio.compartir(
+        bytes: Uint8List.fromList(bytes),
+        nombreArchivo: nombreArchivo,
+        mimeType: mimeType,
+        periodo: datos.periodo,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo generar el reporte: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => exportando = false);
+    }
+  }
+
+  Widget _centroExportacion() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDDE6F2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1565C0).withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.ios_share_rounded,
+                  color: Color(0xFF1565C0),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Exportar y compartir',
+                      style: GoogleFonts.poppins(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'PDF, Excel, correo y WhatsApp',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream:
+                FirebaseFirestore.instance.collection('usuarios').snapshots(),
+            builder: (context, snapshot) {
+              final vendedores = snapshot.data?.docs.where((doc) {
+                    return doc.data()['rol'] == 'vendedor';
+                  }).toList() ??
+                  [];
+
+              return DropdownButtonFormField<String>(
+                initialValue: vendedorIdExportacion ?? 'todos',
+                decoration: InputDecoration(
+                  labelText: 'Exportar por vendedor',
+                  prefixIcon: const Icon(Icons.badge_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: 'todos',
+                    child: Text('Todos los vendedores'),
+                  ),
+                  ...vendedores.map((doc) {
+                    final nombre =
+                        doc.data()['nombre']?.toString() ?? 'Sin nombre';
+                    return DropdownMenuItem(
+                      value: doc.id,
+                      child: Text(
+                        nombre,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }),
+                ],
+                onChanged: exportando
+                    ? null
+                    : (valor) {
+                        setState(() {
+                          if (valor == null || valor == 'todos') {
+                            vendedorIdExportacion = null;
+                            vendedorNombreExportacion =
+                                'Todos los vendedores';
+                            return;
+                          }
+                          vendedorIdExportacion = valor;
+                          final vendedor = vendedores.firstWhere(
+                            (doc) => doc.id == valor,
+                          );
+                          vendedorNombreExportacion =
+                              vendedor.data()['nombre']?.toString() ??
+                                  'Vendedor';
+                        });
+                      },
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F7FC),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.date_range_rounded,
+                  color: Color(0xFF1565C0),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    textoFiltroActual(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: exportando ? null : abrirFiltroFechas,
+                  child: const Text('Cambiar'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (exportando)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(12),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else
+            Wrap(
+              spacing: 9,
+              runSpacing: 9,
+              children: [
+                _botonExportacion(
+                  texto: 'PDF',
+                  icono: Icons.picture_as_pdf_rounded,
+                  color: Colors.red,
+                  onTap: () => _exportarReporte('pdf'),
+                ),
+                _botonExportacion(
+                  texto: 'Excel',
+                  icono: Icons.table_view_rounded,
+                  color: Colors.green,
+                  onTap: () => _exportarReporte('excel'),
+                ),
+                _botonExportacion(
+                  texto: 'Ejecutivo',
+                  icono: Icons.assessment_rounded,
+                  color: Colors.deepPurple,
+                  onTap: () => _exportarReporte('ejecutivo'),
+                ),
+              ],
+            ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.email_outlined, size: 18, color: Colors.grey.shade600),
+              const SizedBox(width: 5),
+              Icon(
+                Icons.chat_outlined,
+                size: 18,
+                color: Colors.green.shade600,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Al generar, elige Correo o WhatsApp para compartir.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10.5,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _botonExportacion({
+    required String texto,
+    required IconData icono,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icono, color: color, size: 20),
+      label: Text(texto),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF1F2937),
+        side: BorderSide(color: color.withValues(alpha: 0.28)),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     );
   }
