@@ -9,6 +9,22 @@ import 'editar_usuario_pantalla.dart';
 class UsuariosPantalla extends StatelessWidget {
   const UsuariosPantalla({super.key});
 
+  String tiempoDesdeUltimaActividad(dynamic valor) {
+    if (valor is! Timestamp) return 'Aun no registra actividad';
+
+    final diferencia = DateTime.now().difference(valor.toDate());
+
+    if (diferencia.inMinutes < 1) return 'Ahora mismo';
+    if (diferencia.inMinutes < 60) {
+      return 'Hace ${diferencia.inMinutes} minutos';
+    }
+    if (diferencia.inHours < 24) {
+      return 'Hace ${diferencia.inHours} horas';
+    }
+    if (diferencia.inDays == 1) return 'Hace 1 dia';
+    return 'Hace ${diferencia.inDays} dias';
+  }
+
   Widget accesoRestringido() {
     return Center(
       child: Padding(
@@ -57,6 +73,9 @@ class UsuariosPantalla extends StatelessWidget {
     final rol = usuario['rol'] ?? 'Sin rol';
     final esAdmin = rol == 'administrador';
     final color = esAdmin ? Colors.indigo : const Color(0xFF1565C0);
+    final ultimaActividad = usuario['ultimaActividad'];
+    final estaActivo = ultimaActividad is Timestamp &&
+        DateTime.now().difference(ultimaActividad.toDate()).inMinutes <= 15;
 
     return InkWell(
       borderRadius: BorderRadius.circular(20),
@@ -127,6 +146,39 @@ class UsuariosPantalla extends StatelessWidget {
                       color: Colors.grey.shade600,
                     ),
                   ),
+                  if (!esAdmin) ...[
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: estaActivo
+                                ? Colors.green
+                                : Colors.amber.shade700,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${estaActivo ? 'Activo' : 'Sin actividad'} · '
+                            '${tiempoDesdeUltimaActividad(ultimaActividad)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: estaActivo
+                                  ? Colors.green.shade700
+                                  : Colors.amber.shade800,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
