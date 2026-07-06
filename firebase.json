@@ -1,1 +1,25 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"crm-sapinf","appId":"1:501291905076:android:53c73943986004cb521a61","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"crm-sapinf","configurations":{"android":"1:501291905076:android:53c73943986004cb521a61","ios":"1:501291905076:ios:eb6cb9ea5fd643f5521a61","macos":"1:501291905076:ios:eb6cb9ea5fd643f5521a61","web":"1:501291905076:web:b3393a22cfe09a3e521a61","windows":"1:501291905076:web:cfa8cfead093fbda521a61"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "crm-sapinf",
+          "appId": "1:501291905076:android:53c73943986004cb521a61",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "crm-sapinf",
+          "configurations": {
+            "android": "1:501291905076:android:53c73943986004cb521a61",
+            "ios": "1:501291905076:ios:eb6cb9ea5fd643f5521a61",
+            "macos": "1:501291905076:ios:eb6cb9ea5fd643f5521a61",
+            "web": "1:501291905076:web:b3393a22cfe09a3e521a61",
+            "windows": "1:501291905076:web:cfa8cfead093fbda521a61"
+          }
+        }
+      }
+    }
+  }
+}

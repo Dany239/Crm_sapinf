@@ -73,14 +73,10 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     return ((actual - anterior) / anterior) * 100;
   }
 
-  Stream<_MetricaReporte> contarDocumentos(
-    String coleccion, {
-    String? estado,
-  }) {
-    return FirebaseFirestore.instance
-        .collection(coleccion)
-        .snapshots()
-        .map((snapshot) {
+  Stream<_MetricaReporte> contarDocumentos(String coleccion, {String? estado}) {
+    return FirebaseFirestore.instance.collection(coleccion).snapshots().map((
+      snapshot,
+    ) {
       final rangoActual = rangoSeleccionado ?? rangoMesActual();
       final anteriorRango = rangoAnterior(rangoActual);
       var totalMostrado = 0;
@@ -104,29 +100,29 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   Stream<_MetricaReporte> calcularMontoTotal() {
-    return FirebaseFirestore.instance.collection('ventas').snapshots().map(
-      (snapshot) {
-        final rangoActual = rangoSeleccionado ?? rangoMesActual();
-        final anteriorRango = rangoAnterior(rangoActual);
-        var totalMostrado = 0.0;
-        var actual = 0.0;
-        var anterior = 0.0;
+    return FirebaseFirestore.instance.collection('ventas').snapshots().map((
+      snapshot,
+    ) {
+      final rangoActual = rangoSeleccionado ?? rangoMesActual();
+      final anteriorRango = rangoAnterior(rangoActual);
+      var totalMostrado = 0.0;
+      var actual = 0.0;
+      var anterior = 0.0;
 
-        for (final doc in snapshot.docs) {
-          final data = doc.data();
-          final monto = double.tryParse(data['monto'].toString()) ?? 0;
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final monto = double.tryParse(data['monto'].toString()) ?? 0;
 
-          if (mostrarEnFiltro(data)) totalMostrado += monto;
-          if (perteneceAlRango(data, rangoActual)) actual += monto;
-          if (perteneceAlRango(data, anteriorRango)) anterior += monto;
-        }
+        if (mostrarEnFiltro(data)) totalMostrado += monto;
+        if (perteneceAlRango(data, rangoActual)) actual += monto;
+        if (perteneceAlRango(data, anteriorRango)) anterior += monto;
+      }
 
-        return _MetricaReporte(
-          valor: totalMostrado,
-          variacion: calcularVariacion(actual, anterior),
-        );
-      },
-    );
+      return _MetricaReporte(
+        valor: totalMostrado,
+        variacion: calcularVariacion(actual, anterior),
+      );
+    });
   }
 
   String formatoLempiras(dynamic valor) {
@@ -144,8 +140,11 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   String iniciales(String nombre) {
-    final partes =
-        nombre.trim().split(' ').where((parte) => parte.isNotEmpty).toList();
+    final partes = nombre
+        .trim()
+        .split(' ')
+        .where((parte) => parte.isNotEmpty)
+        .toList();
     if (partes.isEmpty) return 'SV';
     if (partes.length == 1) {
       return partes.first
@@ -177,10 +176,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   void _abrirPantalla(Widget pantalla) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => pantalla),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => pantalla));
   }
 
   String textoFiltroActual() {
@@ -291,9 +287,9 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: Theme.of(context).colorScheme.copyWith(
-                  primary: const Color(0xFF1565C0),
-                  secondary: const Color(0xFF29B6F6),
-                ),
+              primary: const Color(0xFF1565C0),
+              secondary: const Color(0xFF29B6F6),
+            ),
             datePickerTheme: const DatePickerThemeData(
               headerBackgroundColor: Color(0xFF1565C0),
               headerForegroundColor: Colors.white,
@@ -309,16 +305,9 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     }
   }
 
-  Widget _opcionFiltro(
-    BuildContext context,
-    String titulo,
-    String valor,
-  ) {
+  Widget _opcionFiltro(BuildContext context, String titulo, String valor) {
     return ListTile(
-      leading: const Icon(
-        Icons.date_range_rounded,
-        color: Color(0xFF1565C0),
-      ),
+      leading: const Icon(Icons.date_range_rounded, color: Color(0xFF1565C0)),
       title: Text(titulo),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () => Navigator.pop(context, valor),
@@ -420,7 +409,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     );
   }
 
-  Future<void> _exportarReporte(String tipo) async {
+  Future<void> _exportarReporte(String tipo, {required String accion}) async {
     if (exportando) return;
     setState(() => exportando = true);
 
@@ -448,12 +437,20 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         mimeType = 'application/pdf';
       }
 
-      await ExportacionReportesServicio.compartir(
-        bytes: Uint8List.fromList(bytes),
-        nombreArchivo: nombreArchivo,
-        mimeType: mimeType,
-        periodo: datos.periodo,
-      );
+      if (accion == 'abrir') {
+        await ExportacionReportesServicio.abrir(
+          bytes: bytes,
+          nombreArchivo: nombreArchivo,
+          mimeType: mimeType,
+        );
+      } else {
+        await ExportacionReportesServicio.compartir(
+          bytes: Uint8List.fromList(bytes),
+          nombreArchivo: nombreArchivo,
+          mimeType: mimeType,
+          periodo: datos.periodo,
+        );
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -525,10 +522,12 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
           ),
           const SizedBox(height: 16),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream:
-                FirebaseFirestore.instance.collection('usuarios').snapshots(),
+            stream: FirebaseFirestore.instance
+                .collection('usuarios')
+                .snapshots(),
             builder: (context, snapshot) {
-              final vendedores = snapshot.data?.docs.where((doc) {
+              final vendedores =
+                  snapshot.data?.docs.where((doc) {
                     return doc.data()['rol'] == 'vendedor';
                   }).toList() ??
                   [];
@@ -566,8 +565,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                         setState(() {
                           if (valor == null || valor == 'todos') {
                             vendedorIdExportacion = null;
-                            vendedorNombreExportacion =
-                                'Todos los vendedores';
+                            vendedorNombreExportacion = 'Todos los vendedores';
                             return;
                           }
                           vendedorIdExportacion = valor;
@@ -576,7 +574,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                           );
                           vendedorNombreExportacion =
                               vendedor.data()['nombre']?.toString() ??
-                                  'Vendedor';
+                              'Vendedor';
                         });
                       },
               );
@@ -623,27 +621,34 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
               ),
             )
           else
-            Wrap(
-              spacing: 9,
-              runSpacing: 9,
+            Column(
               children: [
-                _botonExportacion(
+                _tarjetaFormatoExportacion(
                   texto: 'PDF',
+                  descripcion: 'Reporte comercial con logo',
                   icono: Icons.picture_as_pdf_rounded,
                   color: Colors.red,
-                  onTap: () => _exportarReporte('pdf'),
+                  onAbrir: () => _exportarReporte('pdf', accion: 'abrir'),
+                  onCompartir: () =>
+                      _exportarReporte('pdf', accion: 'compartir'),
                 ),
-                _botonExportacion(
+                _tarjetaFormatoExportacion(
                   texto: 'Excel',
+                  descripcion: 'Datos organizados en hojas',
                   icono: Icons.table_view_rounded,
                   color: Colors.green,
-                  onTap: () => _exportarReporte('excel'),
+                  onAbrir: () => _exportarReporte('excel', accion: 'abrir'),
+                  onCompartir: () =>
+                      _exportarReporte('excel', accion: 'compartir'),
                 ),
-                _botonExportacion(
-                  texto: 'Ejecutivo',
+                _tarjetaFormatoExportacion(
+                  texto: 'Reporte Ejecutivo',
+                  descripcion: 'KPIs, ranking y conclusión',
                   icono: Icons.assessment_rounded,
                   color: Colors.deepPurple,
-                  onTap: () => _exportarReporte('ejecutivo'),
+                  onAbrir: () => _exportarReporte('ejecutivo', accion: 'abrir'),
+                  onCompartir: () =>
+                      _exportarReporte('ejecutivo', accion: 'compartir'),
                 ),
               ],
             ),
@@ -652,11 +657,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
             children: [
               Icon(Icons.email_outlined, size: 18, color: Colors.grey.shade600),
               const SizedBox(width: 5),
-              Icon(
-                Icons.chat_outlined,
-                size: 18,
-                color: Colors.green.shade600,
-              ),
+              Icon(Icons.chat_outlined, size: 18, color: Colors.green.shade600),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -674,23 +675,68 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     );
   }
 
-  Widget _botonExportacion({
+  Widget _tarjetaFormatoExportacion({
     required String texto,
+    required String descripcion,
     required IconData icono,
     required Color color,
-    required VoidCallback onTap,
+    required VoidCallback onAbrir,
+    required VoidCallback onCompartir,
   }) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icono, color: color, size: 20),
-      label: Text(texto),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF1F2937),
-        side: BorderSide(color: color.withValues(alpha: 0.28)),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icono, color: color, size: 22),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  texto,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  descripcion,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 9.5,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onAbrir,
+            icon: const Icon(Icons.open_in_new_rounded, size: 17),
+            label: const Text('Abrir'),
+          ),
+          IconButton(
+            tooltip: 'Compartir',
+            onPressed: onCompartir,
+            icon: const Icon(Icons.share_rounded, size: 20),
+          ),
+        ],
       ),
     );
   }
@@ -809,9 +855,8 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         color: const Color(0xFF16A34A),
         fondo: const Color(0xFFE8F8EF),
         stream: contarDocumentos('ventas', estado: 'Cerrada'),
-        onTap: () => _abrirPantalla(
-          const VentasPantalla(estadoInicial: 'Cerrada'),
-        ),
+        onTap: () =>
+            _abrirPantalla(const VentasPantalla(estadoInicial: 'Cerrada')),
       ),
       _DatoResumen(
         titulo: 'Pendientes',
@@ -820,9 +865,8 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         fondo: const Color(0xFFFFF2E3),
         stream: contarDocumentos('ventas', estado: 'Pendiente'),
         invertirColor: true,
-        onTap: () => _abrirPantalla(
-          const VentasPantalla(estadoInicial: 'Pendiente'),
-        ),
+        onTap: () =>
+            _abrirPantalla(const VentasPantalla(estadoInicial: 'Pendiente')),
       ),
     ];
 
@@ -833,11 +877,13 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
           spacing: 10,
           runSpacing: 12,
           children: tarjetas
-              .map((tarjeta) => SizedBox(
-                    width: ancho,
-                    height: 166,
-                    child: _tarjetaResumen(tarjeta),
-                  ))
+              .map(
+                (tarjeta) => SizedBox(
+                  width: ancho,
+                  height: 166,
+                  child: _tarjetaResumen(tarjeta),
+                ),
+              )
               .toList(),
         );
       },
@@ -910,10 +956,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     );
   }
 
-  Widget _variacion(
-    double? porcentaje, {
-    bool invertirColor = false,
-  }) {
+  Widget _variacion(double? porcentaje, {bool invertirColor = false}) {
     final esNuevo = porcentaje == null;
     final valor = porcentaje ?? 0;
     final esPositivo = valor > 0;
@@ -923,13 +966,13 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     final color = esNuevo || esFavorable
         ? const Color(0xFF16A34A)
         : esDesfavorable
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF64748B);
+        ? const Color(0xFFDC2626)
+        : const Color(0xFF64748B);
     final icono = esNuevo || esPositivo
         ? Icons.arrow_upward_rounded
         : esNegativo
-            ? Icons.arrow_downward_rounded
-            : Icons.arrow_forward_rounded;
+        ? Icons.arrow_downward_rounded
+        : Icons.arrow_forward_rounded;
     final texto = esNuevo
         ? 'Nuevo vs mes anterior'
         : '${valor.abs().toStringAsFixed(1)}% vs mes anterior';
@@ -973,13 +1016,13 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         final colorVariacion = esNuevo || variacion > 0
             ? const Color(0xFF7CFF9D)
             : variacion < 0
-                ? const Color(0xFFFFB4B4)
-                : Colors.white70;
+            ? const Color(0xFFFFB4B4)
+            : Colors.white70;
         final iconoVariacion = esNuevo || variacion > 0
             ? '\u2191'
             : variacion < 0
-                ? '\u2193'
-                : '\u2192';
+            ? '\u2193'
+            : '\u2192';
         final textoVariacion = esNuevo
             ? 'Nuevo vs mes anterior'
             : '${variacion.abs().toStringAsFixed(1)}% vs mes anterior';
@@ -1081,14 +1124,15 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
           );
         }
 
-        final ventas = [...?snapshot.data?.docs]
-            .where((doc) => mostrarEnFiltro(doc.data()))
-            .toList();
+        final ventas = [
+          ...?snapshot.data?.docs,
+        ].where((doc) => mostrarEnFiltro(doc.data())).toList();
         ventas.sort((a, b) {
           final fechaA = a.data()['fechaRegistro'] as Timestamp?;
           final fechaB = b.data()['fechaRegistro'] as Timestamp?;
-          return (fechaB?.millisecondsSinceEpoch ?? 0)
-              .compareTo(fechaA?.millisecondsSinceEpoch ?? 0);
+          return (fechaB?.millisecondsSinceEpoch ?? 0).compareTo(
+            fechaA?.millisecondsSinceEpoch ?? 0,
+          );
         });
         final recientes = ventas.take(3).toList();
 
@@ -1170,8 +1214,9 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.poppins(
-                                    color:
-                                        Theme.of(context).colorScheme.onSurface,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -1210,9 +1255,9 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                                   child: Text(
                                     formatoLempiras(venta['monto']),
                                     style: GoogleFonts.poppins(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -1255,12 +1300,14 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
       stream: FirebaseFirestore.instance.collection('ventas').snapshots(),
       builder: (context, ventasSnapshot) {
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream:
-              FirebaseFirestore.instance.collection('seguimientos').snapshots(),
+          stream: FirebaseFirestore.instance
+              .collection('seguimientos')
+              .snapshots(),
           builder: (context, seguimientosSnapshot) {
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream:
-                  FirebaseFirestore.instance.collection('clientes').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('clientes')
+                  .snapshots(),
               builder: (context, clientesSnapshot) {
                 if (!ventasSnapshot.hasData ||
                     !seguimientosSnapshot.hasData ||
@@ -1277,7 +1324,8 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                   final id = data['vendedorId']?.toString() ?? 'sin-asignar';
                   return vendedores.putIfAbsent(id, () {
                     return {
-                      'nombre': data['vendedorNombre']?.toString() ??
+                      'nombre':
+                          data['vendedorNombre']?.toString() ??
                           'Sin vendedor asignado',
                       'ventas': 0,
                       'cerradas': 0,
@@ -1343,8 +1391,9 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   Widget _tarjetaRendimiento(Map<String, dynamic> vendedor) {
     final seguimientos = vendedor['seguimientos'] as int;
     final realizados = vendedor['realizados'] as int;
-    final cumplimiento =
-        seguimientos == 0 ? 0 : ((realizados / seguimientos) * 100).round();
+    final cumplimiento = seguimientos == 0
+        ? 0
+        : ((realizados / seguimientos) * 100).round();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1466,10 +1515,7 @@ class _MetricaReporte {
   final num valor;
   final double? variacion;
 
-  const _MetricaReporte({
-    required this.valor,
-    this.variacion,
-  });
+  const _MetricaReporte({required this.valor, this.variacion});
 }
 
 class _CurvaEncabezado extends CustomClipper<Path> {
@@ -1515,12 +1561,7 @@ class _GraficoDecorativoPainter extends CustomPainter {
     for (var i = 0; i < alturas.length; i++) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            i * 21.0,
-            size.height - alturas[i],
-            14,
-            alturas[i],
-          ),
+          Rect.fromLTWH(i * 21.0, size.height - alturas[i], 14, alturas[i]),
           const Radius.circular(2),
         ),
         barras,

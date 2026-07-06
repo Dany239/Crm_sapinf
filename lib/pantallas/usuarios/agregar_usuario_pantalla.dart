@@ -41,11 +41,11 @@ class _AgregarUsuarioPantallaState extends State<AgregarUsuarioPantalla> {
     });
 
     try {
-      final credencial =
-          await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: correoController.text.trim(),
-        password: passwordController.text.trim(),
-      );
+      final credencial = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: correoController.text.trim(),
+            password: passwordController.text.trim(),
+          );
 
       final uid = credencial.user!.uid;
       await credencial.user!.updateDisplayName(nombreController.text.trim());
@@ -77,9 +77,9 @@ class _AgregarUsuarioPantallaState extends State<AgregarUsuarioPantalla> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(mensaje)));
     } finally {
       if (mounted) {
         setState(() {
@@ -100,9 +100,7 @@ class _AgregarUsuarioPantallaState extends State<AgregarUsuarioPantalla> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Agregar Usuario'),
-      ),
+      appBar: AppBar(title: const Text('Agregar Usuario')),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -134,7 +132,7 @@ class _AgregarUsuarioPantallaState extends State<AgregarUsuarioPantalla> {
             ),
             const SizedBox(height: 15),
             DropdownButtonFormField<String>(
-              value: rolSeleccionado,
+              initialValue: rolSeleccionado,
               decoration: const InputDecoration(
                 labelText: 'Rol',
                 border: OutlineInputBorder(),
@@ -144,10 +142,7 @@ class _AgregarUsuarioPantallaState extends State<AgregarUsuarioPantalla> {
                   value: 'administrador',
                   child: Text('Administrador'),
                 ),
-                DropdownMenuItem(
-                  value: 'vendedor',
-                  child: Text('Vendedor'),
-                ),
+                DropdownMenuItem(value: 'vendedor', child: Text('Vendedor')),
               ],
               onChanged: (valor) {
                 setState(() {

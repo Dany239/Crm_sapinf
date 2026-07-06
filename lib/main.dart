@@ -12,9 +12,7 @@ import 'widgets/registrador_actividad.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const MyApp());
 }
@@ -28,10 +26,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'SAPINF CRM',
       locale: const Locale('es', 'HN'),
-      supportedLocales: const [
-        Locale('es', 'HN'),
-        Locale('es'),
-      ],
+      supportedLocales: const [Locale('es', 'HN'), Locale('es')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -64,9 +59,7 @@ class MyApp extends StatelessWidget {
           color: SapinfColors.celeste,
         ),
       ),
-      home: const SplashPantalla(
-        siguientePantalla: AuthGate(),
-      ),
+      home: const SplashPantalla(siguientePantalla: AuthGate()),
     );
   }
 }
@@ -86,9 +79,7 @@ class AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          return const RegistradorActividad(
-            child: NavegacionPantalla(),
-          );
+          return const RegistradorActividad(child: NavegacionPantalla());
         }
 
         return const LoginPantalla();
@@ -103,16 +94,11 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('SAPINF CRM'),
-      ),
+      appBar: AppBar(title: const Text('SAPINF CRM')),
       body: const Center(
         child: Text(
           'Firebase conectado correctamente',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
       ),
     );

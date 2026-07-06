@@ -60,13 +60,13 @@ class _EditarUsuarioPantallaState extends State<EditarUsuarioPantalla> {
           .collection('usuarios')
           .doc(widget.usuarioId)
           .update({
-        'nombre': nombre,
-        'correo': correo,
-        'rol': rolSeleccionado,
-        'accesoAdministrador':
-            rolSeleccionado == 'administrador' || accesoAdministrador,
-        'fechaActualizacion': FieldValue.serverTimestamp(),
-      });
+            'nombre': nombre,
+            'correo': correo,
+            'rol': rolSeleccionado,
+            'accesoAdministrador':
+                rolSeleccionado == 'administrador' || accesoAdministrador,
+            'fechaActualizacion': FieldValue.serverTimestamp(),
+          });
 
       await Future.wait([
         actualizarNombreVendedorEnColeccion('clientes', nombre, correo),
@@ -219,10 +219,7 @@ class _EditarUsuarioPantallaState extends State<EditarUsuarioPantalla> {
                   value: 'administrador',
                   child: Text('Administrador'),
                 ),
-                DropdownMenuItem(
-                  value: 'vendedor',
-                  child: Text('Vendedor'),
-                ),
+                DropdownMenuItem(value: 'vendedor', child: Text('Vendedor')),
               ],
               onChanged: (valor) {
                 setState(() {

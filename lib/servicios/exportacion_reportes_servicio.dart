@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:excel/excel.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
@@ -68,7 +72,9 @@ class ExportacionReportesServicio {
     bool ejecutivo = false,
   }) async {
     final documento = pw.Document(
-      title: ejecutivo ? 'Reporte Ejecutivo SAPINF' : 'Reporte Comercial SAPINF',
+      title: ejecutivo
+          ? 'Reporte Ejecutivo SAPINF'
+          : 'Reporte Comercial SAPINF',
       author: 'SAPINF CRM',
     );
     final logoData = await rootBundle.load('assets/images/logo_sapinf.png');
@@ -81,10 +87,7 @@ class ExportacionReportesServicio {
         .where((item) => item['estado'] == 'Realizado')
         .length;
     final ranking = _ranking(datos).values.toList()
-      ..sort(
-        (a, b) =>
-            (b['monto'] as double).compareTo(a['monto'] as double),
-      );
+      ..sort((a, b) => (b['monto'] as double).compareTo(a['monto'] as double));
 
     documento.addPage(
       pw.MultiPage(
@@ -94,9 +97,7 @@ class ExportacionReportesServicio {
         footer: (context) => pw.Container(
           padding: const pw.EdgeInsets.only(top: 8),
           decoration: const pw.BoxDecoration(
-            border: pw.Border(
-              top: pw.BorderSide(color: PdfColors.blueGrey200),
-            ),
+            border: pw.Border(top: pw.BorderSide(color: PdfColors.blueGrey200)),
           ),
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -152,17 +153,21 @@ class ExportacionReportesServicio {
           pw.SizedBox(height: 8),
           _tablaPdf(
             encabezados: const ['Pos.', 'Vendedor', 'Ventas', 'Monto'],
-            filas: ranking.take(ejecutivo ? 5 : 10).toList().asMap().entries.map(
-              (entry) {
-                final item = entry.value;
-                return [
-                  '${entry.key + 1}',
-                  item['nombre'].toString(),
-                  item['ventas'].toString(),
-                  _formatoDinero.format(item['monto']),
-                ];
-              },
-            ).toList(),
+            filas: ranking
+                .take(ejecutivo ? 5 : 10)
+                .toList()
+                .asMap()
+                .entries
+                .map((entry) {
+                  final item = entry.value;
+                  return [
+                    '${entry.key + 1}',
+                    item['nombre'].toString(),
+                    item['ventas'].toString(),
+                    _formatoDinero.format(item['monto']),
+                  ];
+                })
+                .toList(),
           ),
           if (!ejecutivo) ...[
             pw.SizedBox(height: 22),
@@ -388,7 +393,7 @@ class ExportacionReportesServicio {
     final lider = ranking.isEmpty
         ? 'No hay vendedor lider en el periodo'
         : 'El mejor resultado corresponde a ${ranking.first['nombre']} con '
-            '${_formatoDinero.format(ranking.first['monto'])}';
+              '${_formatoDinero.format(ranking.first['monto'])}';
     final cumplimiento = datos.seguimientos.isEmpty
         ? 0
         : (seguimientosRealizados * 100 / datos.seguimientos.length).round();
@@ -417,10 +422,7 @@ class ExportacionReportesServicio {
     );
 
     resumen.appendRow([TextCellValue('REPORTE COMERCIAL SAPINF')]);
-    resumen.appendRow([
-      TextCellValue('Periodo'),
-      TextCellValue(datos.periodo),
-    ]);
+    resumen.appendRow([TextCellValue('Periodo'), TextCellValue(datos.periodo)]);
     resumen.appendRow([
       TextCellValue('Vendedor'),
       TextCellValue(datos.vendedor),
@@ -517,13 +519,11 @@ class ExportacionReportesServicio {
     hoja.appendRow(encabezados.map(TextCellValue.new).toList());
     for (var columna = 0; columna < encabezados.length; columna++) {
       hoja
-          .cell(
-            CellIndex.indexByColumnRow(
-              columnIndex: columna,
-              rowIndex: 0,
-            ),
-          )
-          .cellStyle = estiloTitulo;
+              .cell(
+                CellIndex.indexByColumnRow(columnIndex: columna, rowIndex: 0),
+              )
+              .cellStyle =
+          estiloTitulo;
     }
 
     for (final fila in filas) {
@@ -545,12 +545,7 @@ class ExportacionReportesServicio {
   }) async {
     await SharePlus.instance.share(
       ShareParams(
-        files: [
-          XFile.fromData(
-            bytes,
-            mimeType: mimeType,
-          ),
-        ],
+        files: [XFile.fromData(bytes, mimeType: mimeType)],
         fileNameOverrides: [nombreArchivo],
         title: 'Reporte comercial SAPINF',
         subject: 'Reporte comercial SAPINF - $periodo',
@@ -558,5 +553,26 @@ class ExportacionReportesServicio {
             'Adjunto el reporte comercial de SAPINF correspondiente a $periodo.',
       ),
     );
+  }
+
+  static Future<void> abrir({
+    required List<int> bytes,
+    required String nombreArchivo,
+    required String mimeType,
+  }) async {
+    final directorio = await getTemporaryDirectory();
+    final archivo = File(
+      '${directorio.path}${Platform.pathSeparator}$nombreArchivo',
+    );
+    await archivo.writeAsBytes(bytes, flush: true);
+
+    final resultado = await OpenFile.open(archivo.path, type: mimeType);
+    if (resultado.type != ResultType.done) {
+      throw StateError(
+        resultado.type == ResultType.noAppToOpen
+            ? 'No hay una aplicación instalada para abrir este archivo.'
+            : resultado.message,
+      );
+    }
   }
 }

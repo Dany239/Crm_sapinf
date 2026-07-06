@@ -82,9 +82,9 @@ class _RegistroPantallaState extends State<RegistroPantalla> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(mensaje)));
     } finally {
       if (mounted) {
         setState(() {
@@ -139,10 +139,7 @@ class _RegistroPantallaState extends State<RegistroPantalla> {
             : const Icon(Icons.person_add_rounded),
         label: Text(
           cargando ? 'Creando cuenta...' : 'Crear cuenta',
-          style: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-          ),
+          style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF1565C0),
@@ -178,10 +175,7 @@ class _RegistroPantallaState extends State<RegistroPantalla> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF1565C0),
-                    Color(0xFF29B6F6),
-                  ],
+                  colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
