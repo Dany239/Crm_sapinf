@@ -8,6 +8,7 @@ import 'pantallas/navegacion/navegacion_pantalla.dart';
 import 'pantallas/splash/splash_pantalla.dart';
 import 'theme/sapinf_colors.dart';
 import 'widgets/registrador_actividad.dart';
+import 'widgets/verificador_actualizacion.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -79,7 +80,9 @@ class AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          return const RegistradorActividad(child: NavegacionPantalla());
+          return const VerificadorActualizacion(
+            child: RegistradorActividad(child: NavegacionPantalla()),
+          );
         }
 
         return const LoginPantalla();

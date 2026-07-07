@@ -15,6 +15,7 @@ import '../notificaciones/notificaciones_pantalla.dart';
 import '../clientes/clientes_pantalla.dart';
 import '../ventas/ventas_pantalla.dart';
 import '../centro_control/centro_control_comercial_pantalla.dart';
+import '../actualizaciones/actualizaciones_pantalla.dart';
 import '../../widgets/kpi_card.dart';
 import '../../widgets/dashboard_header.dart';
 import '../../servicios/notificaciones_servicio.dart';
@@ -442,7 +443,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: colores.last.withOpacity(0.35),
+                color: colores.last.withValues(alpha: 0.35),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
@@ -533,7 +534,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -1429,7 +1430,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 10,
               offset: const Offset(0, 5),
             ),
@@ -1441,7 +1442,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(icono, color: color, size: 30),
@@ -1718,6 +1719,16 @@ class _InicioPantallaState extends State<InicioPantalla> {
                     onTap: () =>
                         navegarDesdeDrawer(context, const AgendaPantalla()),
                   ),
+                  itemDrawer(
+                    context: context,
+                    titulo: 'Actualizaciones',
+                    icono: Icons.system_update_alt_rounded,
+                    color: const Color(0xFF1565C0),
+                    onTap: () => navegarDesdeDrawer(
+                      context,
+                      const ActualizacionesPantalla(),
+                    ),
+                  ),
                   soloAdministrador(
                     itemDrawer(
                       context: context,
@@ -1972,6 +1983,15 @@ class _InicioPantallaState extends State<InicioPantalla> {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 18),
+            moduloAcceso(
+              context: context,
+              titulo: 'Centro de actualizaciones',
+              descripcion: 'Descarga, instala o recupera versiones del CRM',
+              icono: Icons.system_update_alt_rounded,
+              pantalla: const ActualizacionesPantalla(),
+              color: const Color(0xFF1565C0),
             ),
             graficosComerciales(),
             const SizedBox(height: 16),
