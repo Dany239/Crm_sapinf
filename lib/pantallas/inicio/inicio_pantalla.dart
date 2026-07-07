@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -33,7 +33,56 @@ class _InicioPantallaState extends State<InicioPantalla> {
   bool accesoAdministrador = false;
 
   bool get tieneAccesoAdministrador =>
-      rol == 'administrador' || accesoAdministrador;
+      esRolAdministrador(rol) || accesoAdministrador;
+
+  bool esRolAdministrador(String? valor) {
+    final rolNormalizado = valor?.toString().trim().toLowerCase() ?? '';
+    return rolNormalizado == 'administrador' || rolNormalizado == 'admin';
+  }
+
+  bool valorBooleano(dynamic valor) {
+    if (valor is bool) return valor;
+    if (valor is String) {
+      final normalizado = valor.trim().toLowerCase();
+      return normalizado == 'true' ||
+          normalizado == 'si' ||
+          normalizado == 'sí' ||
+          normalizado == '1';
+    }
+    if (valor is num) return valor == 1;
+    return false;
+  }
+
+  bool tieneAccesoAdministradorDesdeData(Map<String, dynamic>? data) {
+    if (data == null) return tieneAccesoAdministrador;
+
+    return esRolAdministrador(data['rol']?.toString()) ||
+        valorBooleano(data['accesoAdministrador']) ||
+        valorBooleano(data['esAdministrador']) ||
+        valorBooleano(data['admin']);
+  }
+
+  Widget soloAdministrador(Widget child) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) return const SizedBox.shrink();
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+
+        if (!tieneAccesoAdministradorDesdeData(data)) {
+          return const SizedBox.shrink();
+        }
+
+        return child;
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -59,30 +108,42 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
+        final rolUsuario =
+            data['rol']?.toString().trim().toLowerCase() ?? 'vendedor';
+        final tieneAccesoExtra = tieneAccesoAdministradorDesdeData(data);
+
+        if (!mounted) return;
+        setState(() {
+          rol = rolUsuario;
+          accesoAdministrador = tieneAccesoExtra;
+        });
+
         final sesion = SesionUsuario(
           uid: usuario.uid,
           nombre: data['nombre']?.toString() ?? 'Vendedor',
           correo: data['correo']?.toString() ?? usuario.email ?? '',
-          rol: data['rol']?.toString() ?? 'vendedor',
-          accesoAdministrador: data['accesoAdministrador'] == true,
+          rol: rolUsuario,
+          accesoAdministrador: tieneAccesoExtra,
         );
 
-        await NotificacionesServicio.generarRecordatoriosPendientes(sesion);
-        if (!mounted) return;
-
-        setState(() {
-          rol = data['rol'] ?? 'vendedor';
-          accesoAdministrador = data['accesoAdministrador'] == true;
-        });
+        try {
+          await NotificacionesServicio.generarRecordatoriosPendientes(sesion);
+        } catch (_) {
+          // Los accesos no deben depender de la generación de recordatorios.
+        }
       } else {
+        if (mounted) {
+          setState(() {
+            rol = 'vendedor';
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
         setState(() {
           rol = 'vendedor';
         });
       }
-    } catch (e) {
-      setState(() {
-        rol = 'vendedor';
-      });
     }
   }
 
@@ -104,10 +165,9 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   Stream<int> contarDocumentos(String coleccion) {
-    return FirebaseFirestore.instance
-        .collection(coleccion)
-        .snapshots()
-        .map((snapshot) {
+    return FirebaseFirestore.instance.collection(coleccion).snapshots().map((
+      snapshot,
+    ) {
       return snapshot.docs.where((doc) {
         final data = doc.data();
         return puedeVerDocumento(data);
@@ -151,11 +211,11 @@ class _InicioPantallaState extends State<InicioPantalla> {
         .where('estado', isEqualTo: 'Cerrada')
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        return puedeVerDocumento(data);
-      }).length;
-    });
+          return snapshot.docs.where((doc) {
+            final data = doc.data();
+            return puedeVerDocumento(data);
+          }).length;
+        });
   }
 
   Stream<int> ventasEsteMes() {
@@ -245,10 +305,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
         (a, b) => a.value > b.value ? a : b,
       );
 
-      return {
-        'cliente': clienteTop.key,
-        'total': clienteTop.value,
-      };
+      return {'cliente': clienteTop.key, 'total': clienteTop.value};
     });
   }
 
@@ -258,11 +315,11 @@ class _InicioPantallaState extends State<InicioPantalla> {
         .where('estado', isEqualTo: 'Pendiente')
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        return puedeVerDocumento(data);
-      }).length;
-    });
+          return snapshot.docs.where((doc) {
+            final data = doc.data();
+            return puedeVerDocumento(data);
+          }).length;
+        });
   }
 
   String formatoLempiras(num valor) {
@@ -288,9 +345,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => const ClientesPantalla(),
-              ),
+              MaterialPageRoute(builder: (context) => const ClientesPantalla()),
             );
           },
         );
@@ -311,9 +366,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => const VentasPantalla(),
-              ),
+              MaterialPageRoute(builder: (context) => const VentasPantalla()),
             );
           },
         );
@@ -335,9 +388,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const ClientesPantalla(
-                  mostrarClientes: true,
-                ),
+                builder: (context) =>
+                    const ClientesPantalla(mostrarClientes: true),
               ),
             );
           },
@@ -405,10 +457,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
                 child: Text(
                   titulo,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.white,
-                  ),
+                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.white),
                 ),
               ),
               Text(
@@ -438,9 +487,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
         return Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: colores,
-            ),
+            gradient: LinearGradient(colors: colores),
             borderRadius: BorderRadius.circular(22),
           ),
           padding: const EdgeInsets.all(10),
@@ -451,10 +498,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
               Expanded(
                 child: Text(
                   titulo,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ),
               Text(
@@ -601,12 +645,14 @@ class _InicioPantallaState extends State<InicioPantalla> {
       stream: FirebaseFirestore.instance.collection('ventas').snapshots(),
       builder: (context, ventasSnapshot) {
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream:
-              FirebaseFirestore.instance.collection('seguimientos').snapshots(),
+          stream: FirebaseFirestore.instance
+              .collection('seguimientos')
+              .snapshots(),
           builder: (context, seguimientosSnapshot) {
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream:
-                  FirebaseFirestore.instance.collection('clientes').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('clientes')
+                  .snapshots(),
               builder: (context, clientesSnapshot) {
                 if (!ventasSnapshot.hasData ||
                     !seguimientosSnapshot.hasData ||
@@ -621,7 +667,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
                   return resumenes.putIfAbsent(
                     id,
                     () => _ResumenVendedor(
-                      nombre: data['vendedorNombre']?.toString() ??
+                      nombre:
+                          data['vendedorNombre']?.toString() ??
                           'Sin vendedor asignado',
                     ),
                   );
@@ -678,11 +725,14 @@ class _InicioPantallaState extends State<InicioPantalla> {
                   children: [
                     _tituloSeccion('Top vendedores del mes'),
                     const SizedBox(height: 10),
-                    ...vendedores.take(3).toList().asMap().entries.map(
-                          (entry) => _tarjetaTopVendedor(
-                            entry.value,
-                            entry.key + 1,
-                          ),
+                    ...vendedores
+                        .take(3)
+                        .toList()
+                        .asMap()
+                        .entries
+                        .map(
+                          (entry) =>
+                              _tarjetaTopVendedor(entry.value, entry.key + 1),
                         ),
                     const SizedBox(height: 18),
                     _tituloSeccion('Desempe\u00f1o del equipo'),
@@ -874,10 +924,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
         }
 
         final ahora = DateTime.now();
-        final ventasQuincena = <String, double>{
-          '1-15': 0,
-          '16-fin': 0,
-        };
+        final ventasQuincena = <String, double>{'1-15': 0, '16-fin': 0};
         final ventasPorVendedor = <String, double>{};
 
         for (final doc in snapshot.data!.docs) {
@@ -897,11 +944,12 @@ class _InicioPantallaState extends State<InicioPantalla> {
             }
           }
 
-          final vendedor = (venta['vendedorNombre'] ??
-                  venta['vendedorCorreo'] ??
-                  'Sin vendedor')
-              .toString()
-              .trim();
+          final vendedor =
+              (venta['vendedorNombre'] ??
+                      venta['vendedorCorreo'] ??
+                      'Sin vendedor')
+                  .toString()
+                  .trim();
 
           if (vendedor.isNotEmpty) {
             ventasPorVendedor[vendedor] =
@@ -1048,8 +1096,9 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   Widget graficoVentasPorVendedor(List<MapEntry<String, double>> vendedores) {
-    final labels =
-        vendedores.map((entry) => abreviarNombre(entry.key)).toList();
+    final labels = vendedores
+        .map((entry) => abreviarNombre(entry.key))
+        .toList();
     final maxY = valorMaximoGrafico(vendedores.map((entry) => entry.value));
 
     return tarjetaGrafico(
@@ -1154,8 +1203,9 @@ class _InicioPantallaState extends State<InicioPantalla> {
                       child: Column(
                         children: etapas.asMap().entries.map((entry) {
                           final valor = conteo[entry.value] ?? 0;
-                          final porcentaje =
-                              total == 0 ? 0 : (valor * 100 / total);
+                          final porcentaje = total == 0
+                              ? 0
+                              : (valor * 100 / total);
 
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
@@ -1206,10 +1256,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
     return BarTouchData(
       touchTooltipData: BarTouchTooltipData(
         tooltipRoundedRadius: 12,
-        tooltipPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 8,
-        ),
+        tooltipPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         getTooltipColor: (_) => const Color(0xFF1F2937),
         getTooltipItem: (group, groupIndex, rod, rodIndex) {
           return BarTooltipItem(
@@ -1241,15 +1288,9 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   FlTitlesData titulosBarras(List<String> labels) {
     return FlTitlesData(
-      topTitles: const AxisTitles(
-        sideTitles: SideTitles(showTitles: false),
-      ),
-      rightTitles: const AxisTitles(
-        sideTitles: SideTitles(showTitles: false),
-      ),
-      leftTitles: const AxisTitles(
-        sideTitles: SideTitles(showTitles: false),
-      ),
+      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       bottomTitles: AxisTitles(
         sideTitles: SideTitles(
           showTitles: true,
@@ -1298,8 +1339,9 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   double valorMaximoGrafico(Iterable<double> valores) {
-    final maximo =
-        valores.isEmpty ? 0.0 : valores.reduce((a, b) => a > b ? a : b);
+    final maximo = valores.isEmpty
+        ? 0.0
+        : valores.reduce((a, b) => a > b ? a : b);
 
     if (maximo <= 0) return 100000;
 
@@ -1326,15 +1368,16 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   String etapaOportunidad(Map<String, dynamic> cliente) {
-    final valor = (cliente['etapa'] ??
-            cliente['etapaOportunidad'] ??
-            cliente['estadoOportunidad'] ??
-            cliente['estado'] ??
-            cliente['estadoCliente'] ??
-            'Prospecto')
-        .toString()
-        .trim()
-        .toLowerCase();
+    final valor =
+        (cliente['etapa'] ??
+                cliente['etapaOportunidad'] ??
+                cliente['estadoOportunidad'] ??
+                cliente['estado'] ??
+                cliente['estadoCliente'] ??
+                'Prospecto')
+            .toString()
+            .trim()
+            .toLowerCase();
 
     if (valor.contains('contacto')) return 'Contacto inicial';
     if (valor.contains('propuesta')) return 'Propuesta';
@@ -1485,10 +1528,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   void navegarDesdeDrawer(BuildContext context, Widget pantalla) {
     Navigator.pop(context);
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => pantalla),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => pantalla));
   }
 
   Widget itemDrawer({
@@ -1530,10 +1570,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
                 ),
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.grey.shade500,
-            ),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade500),
           ],
         ),
       ),
@@ -1568,8 +1605,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
                   final data = snapshot.data?.data() as Map<String, dynamic>?;
                   final nombre =
                       (data?['nombre']?.toString().isNotEmpty ?? false)
-                          ? data!['nombre'].toString()
-                          : nombreUsuario(usuario);
+                      ? data!['nombre'].toString()
+                      : nombreUsuario(usuario);
                   final rolUsuario = data?['rol']?.toString() ?? rol;
                   final rolTexto = rolUsuario.isEmpty
                       ? 'Vendedor'
@@ -1582,19 +1619,16 @@ class _InicioPantallaState extends State<InicioPantalla> {
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF1565C0),
-                          Color(0xFF29B6F6),
-                        ],
+                        colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF1565C0).withValues(
-                            alpha: 0.20,
-                          ),
+                          color: const Color(
+                            0xFF1565C0,
+                          ).withValues(alpha: 0.20),
                           blurRadius: 18,
                           offset: const Offset(0, 10),
                         ),
@@ -1681,12 +1715,10 @@ class _InicioPantallaState extends State<InicioPantalla> {
                     titulo: 'Agenda',
                     icono: Icons.calendar_month_rounded,
                     color: Colors.teal,
-                    onTap: () => navegarDesdeDrawer(
-                      context,
-                      const AgendaPantalla(),
-                    ),
+                    onTap: () =>
+                        navegarDesdeDrawer(context, const AgendaPantalla()),
                   ),
-                  if (tieneAccesoAdministrador)
+                  soloAdministrador(
                     itemDrawer(
                       context: context,
                       titulo: 'Centro de Control Comercial',
@@ -1697,7 +1729,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
                         const CentroControlComercialPantalla(),
                       ),
                     ),
-                  if (tieneAccesoAdministrador)
+                  ),
+                  soloAdministrador(
                     itemDrawer(
                       context: context,
                       titulo: 'Servicios',
@@ -1708,37 +1741,34 @@ class _InicioPantallaState extends State<InicioPantalla> {
                         const ServiciosPantalla(),
                       ),
                     ),
-                  if (tieneAccesoAdministrador)
+                  ),
+                  soloAdministrador(
                     itemDrawer(
                       context: context,
                       titulo: 'Reportes',
                       icono: Icons.bar_chart_rounded,
                       color: Colors.purple,
-                      onTap: () => navegarDesdeDrawer(
-                        context,
-                        const ReportesPantalla(),
-                      ),
+                      onTap: () =>
+                          navegarDesdeDrawer(context, const ReportesPantalla()),
                     ),
-                  if (tieneAccesoAdministrador)
+                  ),
+                  soloAdministrador(
                     itemDrawer(
                       context: context,
                       titulo: 'Usuarios',
                       icono: Icons.manage_accounts_rounded,
                       color: Colors.indigo,
-                      onTap: () => navegarDesdeDrawer(
-                        context,
-                        const UsuariosPantalla(),
-                      ),
+                      onTap: () =>
+                          navegarDesdeDrawer(context, const UsuariosPantalla()),
                     ),
+                  ),
                   itemDrawer(
                     context: context,
                     titulo: 'Clientes potenciales',
                     icono: Icons.person_add_alt_1_rounded,
                     color: Colors.indigo,
-                    onTap: () => navegarDesdeDrawer(
-                      context,
-                      const ClientesPantalla(),
-                    ),
+                    onTap: () =>
+                        navegarDesdeDrawer(context, const ClientesPantalla()),
                   ),
                 ],
               ),
@@ -1766,11 +1796,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
     final nombre = nombreUsuario(usuario);
 
     if (rol.isEmpty) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
@@ -1792,7 +1818,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
               rol: rol,
               accesoAdministrador: accesoAdministrador,
             );
-            final notificaciones = snapshot.data?.docs.where((doc) {
+            final notificaciones =
+                snapshot.data?.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   return NotificacionesServicio.esVisiblePara(data, sesion) &&
                       !NotificacionesServicio.estaLeidaPor(data, uid);
@@ -1813,25 +1840,21 @@ class _InicioPantallaState extends State<InicioPantalla> {
                   pageBuilder: (context, animation, secondaryAnimation) {
                     return const NotificacionesPantalla();
                   },
-                  transitionBuilder: (
-                    context,
-                    animation,
-                    secondaryAnimation,
-                    child,
-                  ) {
-                    final curved = CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    );
+                  transitionBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        final curved = CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                        );
 
-                    return SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(1, 0),
-                        end: Offset.zero,
-                      ).animate(curved),
-                      child: child,
-                    );
-                  },
+                        return SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(1, 0),
+                            end: Offset.zero,
+                          ).animate(curved),
+                          child: child,
+                        );
+                      },
                 );
               },
             );
@@ -1851,10 +1874,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF1565C0),
-                    Color(0xFF29B6F6),
-                  ],
+                  colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -1937,17 +1957,22 @@ class _InicioPantallaState extends State<InicioPantalla> {
                 tarjetaSeguimientosDashboard(),
               ],
             ),
-            if (tieneAccesoAdministrador) ...[
-              const SizedBox(height: 18),
-              moduloAcceso(
-                context: context,
-                titulo: 'Centro de Control Comercial',
-                descripcion: 'Supervisa la operación del equipo en tiempo real',
-                icono: Icons.monitor_heart_rounded,
-                pantalla: const CentroControlComercialPantalla(),
-                color: Colors.teal,
+            soloAdministrador(
+              Column(
+                children: [
+                  const SizedBox(height: 18),
+                  moduloAcceso(
+                    context: context,
+                    titulo: 'Centro de Control Comercial',
+                    descripcion:
+                        'Supervisa la operación del equipo en tiempo real',
+                    icono: Icons.monitor_heart_rounded,
+                    pantalla: const CentroControlComercialPantalla(),
+                    color: Colors.teal,
+                  ),
+                ],
               ),
-            ],
+            ),
             graficosComerciales(),
             const SizedBox(height: 16),
           ],
