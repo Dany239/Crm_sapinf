@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../servicios/sesion_usuario.dart';
-import '../../servicios/notificaciones_servicio.dart';
+import '../../viewmodels/editar_venta_viewmodel.dart';
 
 class EditarVentaPantalla extends StatefulWidget {
   final String ventaId;
@@ -20,76 +20,43 @@ class EditarVentaPantalla extends StatefulWidget {
 }
 
 class _EditarVentaPantallaState extends State<EditarVentaPantalla> {
-  String? clienteIdSeleccionado;
-  String? clienteNombreSeleccionado;
+  late final EditarVentaViewModel viewModel;
   late TextEditingController descripcionController;
   late TextEditingController montoController;
-
-  late String servicioSeleccionado;
-  late String estadoSeleccionado;
   late Future<SesionUsuario> sesionFuture;
-
-  bool cargando = false;
 
   @override
   void initState() {
     super.initState();
+    viewModel = EditarVentaViewModel(
+      ventaId: widget.ventaId,
+      venta: widget.venta,
+    );
     sesionFuture = obtenerSesionUsuario();
-
-    clienteIdSeleccionado = widget.venta['clienteId'];
-    clienteNombreSeleccionado = widget.venta['cliente'];
-    descripcionController =
-        TextEditingController(text: widget.venta['descripcion'] ?? '');
+    descripcionController = TextEditingController(
+      text: widget.venta['descripcion'] ?? '',
+    );
     montoController = TextEditingController(text: widget.venta['monto'] ?? '');
-
-    servicioSeleccionado = widget.venta['servicio'] ?? 'Desarrollo de software';
-    estadoSeleccionado = widget.venta['estado'] ?? 'Pendiente';
   }
 
   Future<void> actualizarVenta() async {
-    setState(() {
-      cargando = true;
-    });
-
-    final sesion = await obtenerSesionUsuario();
-    final estadoAnterior = widget.venta['estado']?.toString() ?? 'Pendiente';
-
-    await FirebaseFirestore.instance
-        .collection('ventas')
-        .doc(widget.ventaId)
-        .update({
-      'clienteId': clienteIdSeleccionado,
-      'cliente': clienteNombreSeleccionado,
-      'servicio': servicioSeleccionado,
-      'descripcion': descripcionController.text.trim(),
-      'monto': montoController.text.trim(),
-      'estado': estadoSeleccionado,
-      'fechaActualizacion': FieldValue.serverTimestamp(),
-    });
-
-    if (estadoAnterior != estadoSeleccionado) {
-      await NotificacionesServicio.crear(
-        titulo: 'Venta $estadoSeleccionado',
-        descripcion:
-            '${sesion.nombre} cambi\u00f3 la venta de $clienteNombreSeleccionado de $estadoAnterior a $estadoSeleccionado.',
-        tipo: 'venta_estado',
-        icono: 'attach_money',
-        color: estadoSeleccionado == 'Cerrada'
-            ? 'green'
-            : estadoSeleccionado == 'Cancelada'
-                ? 'red'
-                : 'orange',
-        autor: sesion,
-        usuariosDestinatarios: [
-          widget.venta['vendedorId']?.toString() ?? '',
-          sesion.uid,
-        ],
-        referenciaId: widget.ventaId,
-        referenciaColeccion: 'ventas',
-      );
-    }
+    final actualizado = await viewModel.actualizarVenta(
+      descripcion: descripcionController.text,
+      monto: montoController.text,
+    );
 
     if (!mounted) return;
+
+    if (!actualizado) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            viewModel.mensajeError ?? 'No se pudo actualizar la venta',
+          ),
+        ),
+      );
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Venta actualizada correctamente')),
@@ -119,24 +86,33 @@ class _EditarVentaPantallaState extends State<EditarVentaPantalla> {
       },
     );
 
-    if (confirmar == true) {
-      await FirebaseFirestore.instance
-          .collection('ventas')
-          .doc(widget.ventaId)
-          .delete();
+    if (confirmar != true) return;
 
-      if (!mounted) return;
+    final eliminado = await viewModel.eliminarVenta();
 
+    if (!mounted) return;
+
+    if (!eliminado) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Venta eliminada correctamente')),
+        SnackBar(
+          content: Text(
+            viewModel.mensajeError ?? 'No se pudo eliminar la venta',
+          ),
+        ),
       );
-
-      Navigator.pop(context);
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Venta eliminada correctamente')),
+    );
+
+    Navigator.pop(context);
   }
 
   @override
   void dispose() {
+    viewModel.dispose();
     descripcionController.dispose();
     montoController.dispose();
     super.dispose();
@@ -153,10 +129,7 @@ class _EditarVentaPantallaState extends State<EditarVentaPantalla> {
       prefixIcon: Icon(icono, color: const Color(0xFF1565C0)),
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
@@ -167,10 +140,7 @@ class _EditarVentaPantallaState extends State<EditarVentaPantalla> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(
-          color: Color(0xFF1565C0),
-          width: 1.4,
-        ),
+        borderSide: const BorderSide(color: Color(0xFF1565C0), width: 1.4),
       ),
     );
   }
@@ -189,11 +159,7 @@ class _EditarVentaPantallaState extends State<EditarVentaPantalla> {
             color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(11),
           ),
-          child: Icon(
-            icono,
-            color: color,
-            size: 19,
-          ),
+          child: Icon(icono, color: color, size: 19),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -341,14 +307,17 @@ class _EditarVentaPantallaState extends State<EditarVentaPantalla> {
               menuMaxHeight: 320,
               icon: const Icon(Icons.keyboard_arrow_down_rounded),
               initialValue:
-                  clientes.any((doc) => doc.id == clienteIdSeleccionado)
-                      ? clienteIdSeleccionado
-                      : null,
+                  clientes.any(
+                    (doc) => doc.id == viewModel.clienteIdSeleccionado,
+                  )
+                  ? viewModel.clienteIdSeleccionado
+                  : null,
               decoration: campoDecoracion(
                 label: 'Cliente',
                 icono: Icons.person,
-                hintText:
-                    clientes.isEmpty ? 'No hay clientes disponibles' : null,
+                hintText: clientes.isEmpty
+                    ? 'No hay clientes disponibles'
+                    : null,
               ),
               items: clientes.map((doc) {
                 final cliente = doc.data() as Map<String, dynamic>;
@@ -363,15 +332,17 @@ class _EditarVentaPantallaState extends State<EditarVentaPantalla> {
                 );
               }).toList(),
               onChanged: (value) {
+                if (value == null) return;
+
                 final clienteDoc = clientes.firstWhere(
                   (doc) => doc.id == value,
                 );
                 final cliente = clienteDoc.data() as Map<String, dynamic>;
 
-                setState(() {
-                  clienteIdSeleccionado = clienteDoc.id;
-                  clienteNombreSeleccionado = cliente['nombre'] ?? '';
-                });
+                viewModel.seleccionarCliente(
+                  clienteId: clienteDoc.id,
+                  clienteNombre: cliente['nombre'] ?? '',
+                );
               },
             );
           },
@@ -382,237 +353,240 @@ class _EditarVentaPantallaState extends State<EditarVentaPantalla> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        foregroundColor: const Color(0xFF1F2937),
-        title: Text(
-          'Editar Venta',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Tooltip(
-              message: 'Eliminar venta',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: eliminarVenta,
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.10),
+    return AnimatedBuilder(
+      animation: viewModel,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            foregroundColor: const Color(0xFF1F2937),
+            title: Text(
+              'Editar Venta',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Tooltip(
+                  message: 'Eliminar venta',
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.16),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.red,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF1565C0),
-                    Color(0xFF29B6F6),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF1565C0).withValues(alpha: 0.22),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: const Icon(
-                      Icons.receipt_long,
-                      color: Colors.white,
-                      size: 30,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Actualizar venta',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Ajusta el servicio, monto y estado de la oportunidad.',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white.withValues(alpha: 0.86),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 14,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  selectorCliente(),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    dropdownColor: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    menuMaxHeight: 320,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    initialValue: servicioSeleccionado,
-                    decoration: campoDecoracion(
-                      label: 'Servicio',
-                      icono: Icons.build_circle,
-                    ),
-                    items: [
-                      opcionServicio('Desarrollo de software'),
-                      opcionServicio('Sistema web'),
-                      opcionServicio('Aplicación móvil'),
-                      opcionServicio('Soporte técnico'),
-                      opcionServicio('Equipo informático'),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        servicioSeleccionado = value!;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: descripcionController,
-                    maxLines: 4,
-                    decoration: campoDecoracion(
-                      label: 'Descripción',
-                      icono: Icons.description,
-                      hintText: 'Describe el alcance o necesidad del cliente',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: montoController,
-                    keyboardType: TextInputType.number,
-                    decoration: campoDecoracion(
-                      label: 'Monto',
-                      icono: Icons.payments,
-                      hintText: 'Ejemplo: 50000',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    dropdownColor: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    menuMaxHeight: 260,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    initialValue: estadoSeleccionado,
-                    decoration: campoDecoracion(
-                      label: 'Estado',
-                      icono: Icons.flag,
-                    ),
-                    items: [
-                      opcionEstado('Pendiente'),
-                      opcionEstado('En proceso'),
-                      opcionEstado('Cerrada'),
-                      opcionEstado('Cancelada'),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        estadoSeleccionado = value!;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1565C0),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                onPressed: cargando ? null : actualizarVenta,
-                child: cargando
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        'Guardar cambios',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
+                    onTap: viewModel.eliminando ? null : eliminarVenta,
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.16),
                         ),
                       ),
+                      child: viewModel.eliminando
+                          ? const Padding(
+                              padding: EdgeInsets.all(11),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.delete_outline, color: Colors.red),
+                    ),
+                  ),
+                ),
               ),
+            ],
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1565C0).withValues(alpha: 0.22),
+                        blurRadius: 18,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: const Icon(
+                          Icons.receipt_long,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Actualizar venta',
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Ajusta el servicio, monto y estado de la oportunidad.',
+                              style: GoogleFonts.poppins(
+                                color: Colors.white.withValues(alpha: 0.86),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 14,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      selectorCliente(),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        menuMaxHeight: 320,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        initialValue: viewModel.servicioSeleccionado,
+                        decoration: campoDecoracion(
+                          label: 'Servicio',
+                          icono: Icons.build_circle,
+                        ),
+                        items: [
+                          opcionServicio('Desarrollo de software'),
+                          opcionServicio('Sistema web'),
+                          opcionServicio('Aplicación móvil'),
+                          opcionServicio('Soporte técnico'),
+                          opcionServicio('Equipo informático'),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          viewModel.seleccionarServicio(value);
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: descripcionController,
+                        maxLines: 4,
+                        decoration: campoDecoracion(
+                          label: 'Descripción',
+                          icono: Icons.description,
+                          hintText:
+                              'Describe el alcance o necesidad del cliente',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: montoController,
+                        keyboardType: TextInputType.number,
+                        decoration: campoDecoracion(
+                          label: 'Monto',
+                          icono: Icons.payments,
+                          hintText: 'Ejemplo: 50000',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        menuMaxHeight: 260,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        initialValue: viewModel.estadoSeleccionado,
+                        decoration: campoDecoracion(
+                          label: 'Estado',
+                          icono: Icons.flag,
+                        ),
+                        items: [
+                          opcionEstado('Pendiente'),
+                          opcionEstado('En proceso'),
+                          opcionEstado('Cerrada'),
+                          opcionEstado('Cancelada'),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          viewModel.seleccionarEstado(value);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1565C0),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    onPressed: viewModel.cargando ? null : actualizarVenta,
+                    child: viewModel.cargando
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            'Guardar cambios',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

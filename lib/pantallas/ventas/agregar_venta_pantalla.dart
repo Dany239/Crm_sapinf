@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../servicios/sesion_usuario.dart';
-import '../../servicios/notificaciones_servicio.dart';
+import '../../viewmodels/agregar_venta_viewmodel.dart';
 
 class AgregarVentaPantalla extends StatefulWidget {
   final String? clienteIdInicial;
@@ -20,65 +20,39 @@ class AgregarVentaPantalla extends StatefulWidget {
 }
 
 class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
-  String? clienteIdSeleccionado;
-  String? clienteNombreSeleccionado;
   final descripcionController = TextEditingController();
   final montoController = TextEditingController();
-
-  String servicioSeleccionado = 'Desarrollo de software';
-  String estadoSeleccionado = 'Pendiente';
+  late final AgregarVentaViewModel viewModel;
   late Future<SesionUsuario> sesionFuture;
-
-  bool cargando = false;
 
   @override
   void initState() {
     super.initState();
-    clienteIdSeleccionado = widget.clienteIdInicial;
-    clienteNombreSeleccionado = widget.clienteNombreInicial;
+    viewModel = AgregarVentaViewModel(
+      clienteIdInicial: widget.clienteIdInicial,
+      clienteNombreInicial: widget.clienteNombreInicial,
+    );
     sesionFuture = obtenerSesionUsuario();
   }
 
   Future<void> guardarVenta() async {
-    if (clienteIdSeleccionado == null || montoController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cliente y monto son obligatorios')),
-      );
-      return;
-    }
-
-    setState(() {
-      cargando = true;
-    });
-
-    final sesion = await obtenerSesionUsuario();
-
-    final referencia =
-        await FirebaseFirestore.instance.collection('ventas').add({
-      'clienteId': clienteIdSeleccionado,
-      'cliente': clienteNombreSeleccionado,
-      'servicio': servicioSeleccionado,
-      'descripcion': descripcionController.text.trim(),
-      'monto': montoController.text.trim(),
-      'estado': estadoSeleccionado,
-      ...datosPropietario(sesion),
-      'fechaRegistro': FieldValue.serverTimestamp(),
-    });
-
-    await NotificacionesServicio.crear(
-      titulo: 'Nueva venta registrada',
-      descripcion:
-          '${sesion.nombre} registr\u00f3 una venta para $clienteNombreSeleccionado por L. ${montoController.text.trim()}.',
-      tipo: 'venta',
-      icono: 'attach_money',
-      color: 'green',
-      autor: sesion,
-      usuariosDestinatarios: [sesion.uid],
-      referenciaId: referencia.id,
-      referenciaColeccion: 'ventas',
+    final guardado = await viewModel.guardarVenta(
+      descripcion: descripcionController.text,
+      monto: montoController.text,
     );
 
     if (!mounted) return;
+
+    if (!guardado) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            viewModel.mensajeError ?? 'No se pudo guardar la venta',
+          ),
+        ),
+      );
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Venta guardada correctamente')),
@@ -89,6 +63,7 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
 
   @override
   void dispose() {
+    viewModel.dispose();
     descripcionController.dispose();
     montoController.dispose();
     super.dispose();
@@ -105,10 +80,7 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
       prefixIcon: Icon(icono, color: const Color(0xFF1565C0)),
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
@@ -119,10 +91,7 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(
-          color: Color(0xFF1565C0),
-          width: 1.4,
-        ),
+        borderSide: const BorderSide(color: Color(0xFF1565C0), width: 1.4),
       ),
       labelStyle: GoogleFonts.poppins(
         color: Colors.grey.shade600,
@@ -145,11 +114,7 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
             color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(11),
           ),
-          child: Icon(
-            icono,
-            color: color,
-            size: 19,
-          ),
+          child: Icon(icono, color: color, size: 19),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -261,12 +226,9 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
   Widget selectorCliente() {
     if (widget.clienteIdInicial != null) {
       return TextFormField(
-        initialValue: clienteNombreSeleccionado ?? 'Sin nombre',
+        initialValue: viewModel.clienteNombreSeleccionado ?? 'Sin nombre',
         readOnly: true,
-        decoration: campoDecoracion(
-          label: 'Cliente',
-          icono: Icons.person,
-        ),
+        decoration: campoDecoracion(label: 'Cliente', icono: Icons.person),
       );
     }
 
@@ -308,14 +270,17 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
               menuMaxHeight: 320,
               icon: const Icon(Icons.keyboard_arrow_down_rounded),
               initialValue:
-                  clientes.any((doc) => doc.id == clienteIdSeleccionado)
-                      ? clienteIdSeleccionado
-                      : null,
+                  clientes.any(
+                    (doc) => doc.id == viewModel.clienteIdSeleccionado,
+                  )
+                  ? viewModel.clienteIdSeleccionado
+                  : null,
               decoration: campoDecoracion(
                 label: 'Cliente',
                 icono: Icons.person,
-                hintText:
-                    clientes.isEmpty ? 'No hay clientes disponibles' : null,
+                hintText: clientes.isEmpty
+                    ? 'No hay clientes disponibles'
+                    : null,
               ),
               items: clientes.map((doc) {
                 final cliente = doc.data() as Map<String, dynamic>;
@@ -330,15 +295,17 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
                 );
               }).toList(),
               onChanged: (value) {
+                if (value == null) return;
+
                 final clienteDoc = clientes.firstWhere(
                   (doc) => doc.id == value,
                 );
                 final cliente = clienteDoc.data() as Map<String, dynamic>;
 
-                setState(() {
-                  clienteIdSeleccionado = clienteDoc.id;
-                  clienteNombreSeleccionado = cliente['nombre'] ?? '';
-                });
+                viewModel.seleccionarCliente(
+                  clienteId: clienteDoc.id,
+                  clienteNombre: cliente['nombre'] ?? '',
+                );
               },
             );
           },
@@ -353,10 +320,7 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1565C0),
-            Color(0xFF29B6F6),
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -418,154 +382,157 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        foregroundColor: const Color(0xFF1F2937),
-        title: Text(
-          'Agregar Venta',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
-        child: Column(
-          children: [
-            encabezadoVenta(),
-            const SizedBox(height: 22),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.045),
-                    blurRadius: 14,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  selectorCliente(),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    dropdownColor: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    menuMaxHeight: 320,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    initialValue: servicioSeleccionado,
-                    decoration: campoDecoracion(
-                      label: 'Servicio',
-                      icono: Icons.design_services,
-                    ),
-                    items: [
-                      opcionServicio('Desarrollo de software'),
-                      opcionServicio('Sistema web'),
-                      opcionServicio('Aplicación móvil'),
-                      opcionServicio('Soporte técnico'),
-                      opcionServicio('Equipo informático'),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        servicioSeleccionado = value!;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: descripcionController,
-                    maxLines: 3,
-                    decoration: campoDecoracion(
-                      label: 'Descripción',
-                      icono: Icons.notes,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: montoController,
-                    keyboardType: TextInputType.number,
-                    decoration: campoDecoracion(
-                      label: 'Monto',
-                      icono: Icons.payments,
-                      hintText: 'Ej. 25000',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    dropdownColor: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    menuMaxHeight: 280,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    initialValue: estadoSeleccionado,
-                    decoration: campoDecoracion(
-                      label: 'Estado',
-                      icono: Icons.flag,
-                    ),
-                    items: [
-                      opcionEstado('Pendiente'),
-                      opcionEstado('En proceso'),
-                      opcionEstado('Cerrada'),
-                      opcionEstado('Cancelada'),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        estadoSeleccionado = value!;
-                      });
-                    },
-                  ),
-                ],
-              ),
+    return AnimatedBuilder(
+      animation: viewModel,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            foregroundColor: const Color(0xFF1F2937),
+            title: Text(
+              'Agregar Venta',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 22),
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1565C0),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
+            child: Column(
+              children: [
+                encabezadoVenta(),
+                const SizedBox(height: 22),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.045),
+                        blurRadius: 14,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      selectorCliente(),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        menuMaxHeight: 320,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        initialValue: viewModel.servicioSeleccionado,
+                        decoration: campoDecoracion(
+                          label: 'Servicio',
+                          icono: Icons.design_services,
+                        ),
+                        items: [
+                          opcionServicio('Desarrollo de software'),
+                          opcionServicio('Sistema web'),
+                          opcionServicio('Aplicación móvil'),
+                          opcionServicio('Soporte técnico'),
+                          opcionServicio('Equipo informático'),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          viewModel.seleccionarServicio(value);
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: descripcionController,
+                        maxLines: 3,
+                        decoration: campoDecoracion(
+                          label: 'Descripción',
+                          icono: Icons.notes,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: montoController,
+                        keyboardType: TextInputType.number,
+                        decoration: campoDecoracion(
+                          label: 'Monto',
+                          icono: Icons.payments,
+                          hintText: 'Ej. 25000',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        menuMaxHeight: 280,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        initialValue: viewModel.estadoSeleccionado,
+                        decoration: campoDecoracion(
+                          label: 'Estado',
+                          icono: Icons.flag,
+                        ),
+                        items: [
+                          opcionEstado('Pendiente'),
+                          opcionEstado('En proceso'),
+                          opcionEstado('Cerrada'),
+                          opcionEstado('Cancelada'),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          viewModel.seleccionarEstado(value);
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                onPressed: cargando ? null : guardarVenta,
-                child: cargando
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.4,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.save_rounded, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Guardar venta',
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1565C0),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
                       ),
-              ),
+                    ),
+                    onPressed: viewModel.cargando ? null : guardarVenta,
+                    child: viewModel.cargando
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.4,
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.save_rounded, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Guardar venta',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
