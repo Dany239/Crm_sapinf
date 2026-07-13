@@ -1,7 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../models/cliente_model.dart';
 import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/agregar_venta_viewmodel.dart';
 
@@ -232,36 +232,29 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
       );
     }
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('clientes').snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+    return FutureBuilder<SesionUsuario>(
+      future: sesionFuture,
+      builder: (context, sesionSnapshot) {
+        if (!sesionSnapshot.hasData) {
           return const Padding(
             padding: EdgeInsets.all(16),
             child: CircularProgressIndicator(),
           );
         }
 
-        return FutureBuilder<SesionUsuario>(
-          future: sesionFuture,
-          builder: (context, sesionSnapshot) {
-            if (!sesionSnapshot.hasData) {
+        final sesion = sesionSnapshot.data!;
+
+        return StreamBuilder<List<ClienteModel>>(
+          stream: viewModel.escucharClientesDisponibles(sesion),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
               return const Padding(
                 padding: EdgeInsets.all(16),
                 child: CircularProgressIndicator(),
               );
             }
 
-            final sesion = sesionSnapshot.data!;
-            final clientes = snapshot.data!.docs.where((doc) {
-              final cliente = doc.data() as Map<String, dynamic>;
-              final estadoCliente =
-                  cliente['estadoCliente']?.toString() ?? 'Cliente potencial';
-              final pertenece =
-                  sesion.esAdministrador || cliente['vendedorId'] == sesion.uid;
-
-              return pertenece && estadoCliente == 'Cliente';
-            }).toList();
+            final clientes = snapshot.data ?? [];
 
             return DropdownButtonFormField<String>(
               isExpanded: true,
@@ -271,7 +264,7 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
               icon: const Icon(Icons.keyboard_arrow_down_rounded),
               initialValue:
                   clientes.any(
-                    (doc) => doc.id == viewModel.clienteIdSeleccionado,
+                    (cliente) => cliente.id == viewModel.clienteIdSeleccionado,
                   )
                   ? viewModel.clienteIdSeleccionado
                   : null,
@@ -282,14 +275,12 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
                     ? 'No hay clientes disponibles'
                     : null,
               ),
-              items: clientes.map((doc) {
-                final cliente = doc.data() as Map<String, dynamic>;
-
+              items: clientes.map((cliente) {
                 return DropdownMenuItem<String>(
-                  value: doc.id,
+                  value: cliente.id,
                   child: opcionDesplegable(
                     icono: Icons.person,
-                    texto: cliente['nombre'] ?? 'Sin nombre',
+                    texto: cliente.nombre,
                     color: const Color(0xFF1565C0),
                   ),
                 );
@@ -297,14 +288,13 @@ class _AgregarVentaPantallaState extends State<AgregarVentaPantalla> {
               onChanged: (value) {
                 if (value == null) return;
 
-                final clienteDoc = clientes.firstWhere(
-                  (doc) => doc.id == value,
+                final cliente = clientes.firstWhere(
+                  (cliente) => cliente.id == value,
                 );
-                final cliente = clienteDoc.data() as Map<String, dynamic>;
 
                 viewModel.seleccionarCliente(
-                  clienteId: clienteDoc.id,
-                  clienteNombre: cliente['nombre'] ?? '',
+                  clienteId: cliente.id ?? '',
+                  clienteNombre: cliente.nombre,
                 );
               },
             );

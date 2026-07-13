@@ -72,4 +72,20 @@ class VentaModel {
       'fechaActualizacion': FieldValue.serverTimestamp(),
     };
   }
+
+  Map<String, dynamic> toPlainMap() {
+    return {
+      'clienteId': clienteId,
+      'cliente': cliente,
+      'servicio': servicio,
+      'descripcion': descripcion,
+      'monto': monto,
+      'estado': estado,
+      'vendedorId': vendedorId,
+      'vendedorNombre': vendedorNombre,
+      'vendedorCorreo': vendedorCorreo,
+      'fechaRegistro': fechaRegistro,
+      'fechaActualizacion': fechaActualizacion,
+    };
+  }
 }

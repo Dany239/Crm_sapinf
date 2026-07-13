@@ -1,17 +1,22 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/cliente_model.dart';
 import '../models/venta_model.dart';
+import '../repositories/clientes_repository.dart';
 import '../repositories/ventas_repository.dart';
 import '../servicios/sesion_usuario.dart';
 
 class AgregarVentaViewModel extends ChangeNotifier {
   final VentasRepository _ventasRepository;
+  final ClientesRepository _clientesRepository;
 
   AgregarVentaViewModel({
     VentasRepository? ventasRepository,
+    ClientesRepository? clientesRepository,
     String? clienteIdInicial,
     String? clienteNombreInicial,
   }) : _ventasRepository = ventasRepository ?? VentasRepository(),
+       _clientesRepository = clientesRepository ?? ClientesRepository(),
        clienteIdSeleccionado = clienteIdInicial,
        clienteNombreSeleccionado = clienteNombreInicial;
 
@@ -21,6 +26,10 @@ class AgregarVentaViewModel extends ChangeNotifier {
   String estadoSeleccionado = 'Pendiente';
   bool cargando = false;
   String? mensajeError;
+
+  Stream<List<ClienteModel>> escucharClientesDisponibles(SesionUsuario sesion) {
+    return _clientesRepository.escucharClientesDisponibles(sesion);
+  }
 
   void seleccionarCliente({
     required String clienteId,

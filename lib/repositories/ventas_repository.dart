@@ -9,6 +9,17 @@ class VentasRepository {
       .instance
       .collection('ventas');
 
+  Stream<List<VentaModel>> escucharVentas() {
+    return _ventas
+        .orderBy('fechaRegistro', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => VentaModel.fromMap(doc.data(), id: doc.id))
+              .toList(),
+        );
+  }
+
   Future<DocumentReference<Map<String, dynamic>>> crearVenta({
     required VentaModel venta,
     required SesionUsuario sesion,

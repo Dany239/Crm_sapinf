@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 
 import 'agregar_venta_pantalla.dart';
 import 'editar_venta_pantalla.dart';
+import '../../models/venta_model.dart';
 import '../../servicios/sesion_usuario.dart';
+import '../../viewmodels/ventas_viewmodel.dart';
 
 class VentasPantalla extends StatefulWidget {
   final String? estadoInicial;
 
-  const VentasPantalla({
-    super.key,
-    this.estadoInicial,
-  });
+  const VentasPantalla({super.key, this.estadoInicial});
 
   @override
   State<VentasPantalla> createState() => _VentasPantallaState();
@@ -21,35 +18,21 @@ class VentasPantalla extends StatefulWidget {
 
 class _VentasPantallaState extends State<VentasPantalla> {
   final buscarController = TextEditingController();
-  String textoBusqueda = '';
   late Future<SesionUsuario> sesionFuture;
+  late final VentasViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
     sesionFuture = obtenerSesionUsuario();
+    viewModel = VentasViewModel(estadoInicial: widget.estadoInicial);
   }
 
   @override
   void dispose() {
     buscarController.dispose();
+    viewModel.dispose();
     super.dispose();
-  }
-
-  String formatoLempiras(dynamic valor) {
-    final monto = num.tryParse(valor?.toString() ?? '0') ?? 0;
-    final formato = NumberFormat.currency(
-      locale: 'en_US',
-      symbol: 'L. ',
-      decimalDigits: 0,
-    );
-
-    return formato.format(monto);
-  }
-
-  String fechaCorta(dynamic valor) {
-    if (valor is! Timestamp) return 'Sin fecha';
-    return DateFormat('dd/MM/yyyy').format(valor.toDate());
   }
 
   Color colorEstado(String estado) {
@@ -81,9 +64,7 @@ class _VentasPantallaState extends State<VentasPantalla> {
   void abrirAgregarVenta() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const AgregarVentaPantalla(),
-      ),
+      MaterialPageRoute(builder: (context) => const AgregarVentaPantalla()),
     );
   }
 
@@ -93,10 +74,7 @@ class _VentasPantallaState extends State<VentasPantalla> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1565C0),
-            Color(0xFF29B6F6),
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -184,14 +162,12 @@ class _VentasPantallaState extends State<VentasPantalla> {
             Icons.search_rounded,
             color: Color(0xFF1565C0),
           ),
-          suffixIcon: textoBusqueda.isNotEmpty
+          suffixIcon: viewModel.textoBusqueda.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.close_rounded),
                   onPressed: () {
                     buscarController.clear();
-                    setState(() {
-                      textoBusqueda = '';
-                    });
+                    viewModel.limpiarBusqueda();
                   },
                 )
               : null,
@@ -202,23 +178,17 @@ class _VentasPantallaState extends State<VentasPantalla> {
           ),
         ),
         onChanged: (valor) {
-          setState(() {
-            textoBusqueda = valor.toLowerCase();
-          });
+          viewModel.actualizarBusqueda(valor);
         },
       ),
     );
   }
 
-  Widget tarjetaVenta({
-    required String ventaId,
-    required Map<String, dynamic> venta,
-  }) {
-    final cliente = venta['cliente']?.toString() ?? 'Sin cliente';
-    final servicio = venta['servicio']?.toString() ?? 'Sin servicio';
-    final estado = venta['estado']?.toString() ?? 'Pendiente';
-    final vendedor =
-        venta['vendedorNombre']?.toString() ?? 'Sin vendedor asignado';
+  Widget tarjetaVenta({required VentaModel venta}) {
+    final cliente = venta.cliente ?? 'Sin cliente';
+    final servicio = venta.servicio;
+    final estado = venta.estado;
+    final vendedor = venta.vendedorNombre ?? 'Sin vendedor asignado';
     final color = colorEstado(estado);
 
     return Container(
@@ -242,8 +212,8 @@ class _VentasPantallaState extends State<VentasPantalla> {
             context,
             MaterialPageRoute(
               builder: (context) => EditarVentaPantalla(
-                ventaId: ventaId,
-                venta: venta,
+                ventaId: venta.id ?? '',
+                venta: venta.toPlainMap(),
               ),
             ),
           );
@@ -259,11 +229,7 @@ class _VentasPantallaState extends State<VentasPantalla> {
                   color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(
-                  Icons.attach_money,
-                  color: color,
-                  size: 27,
-                ),
+                child: Icon(Icons.attach_money, color: color, size: 27),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -296,11 +262,7 @@ class _VentasPantallaState extends State<VentasPantalla> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                iconoEstado(estado),
-                                size: 13,
-                                color: color,
-                              ),
+                              Icon(iconoEstado(estado), size: 13, color: color),
                               const SizedBox(width: 4),
                               Text(
                                 estado,
@@ -328,7 +290,7 @@ class _VentasPantallaState extends State<VentasPantalla> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '$vendedor \u00b7 ${fechaCorta(venta['fechaRegistro'])}',
+                      '$vendedor \u00b7 ${viewModel.fechaCorta(venta.fechaRegistro)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
@@ -341,7 +303,7 @@ class _VentasPantallaState extends State<VentasPantalla> {
                     Row(
                       children: [
                         Text(
-                          formatoLempiras(venta['monto']),
+                          viewModel.formatoLempiras(venta.monto),
                           style: GoogleFonts.poppins(
                             color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 16,
@@ -411,114 +373,85 @@ class _VentasPantallaState extends State<VentasPantalla> {
     );
   }
 
-  List<QueryDocumentSnapshot> filtrarVentas(
-    List<QueryDocumentSnapshot> docs,
-    SesionUsuario sesion,
-  ) {
-    return docs.where((doc) {
-      final venta = doc.data() as Map<String, dynamic>;
-
-      if (!sesion.esAdministrador && venta['vendedorId'] != sesion.uid) {
-        return false;
-      }
-      if (widget.estadoInicial != null &&
-          venta['estado'] != widget.estadoInicial) {
-        return false;
-      }
-
-      final cliente = (venta['cliente'] ?? '').toString().toLowerCase();
-      final servicio = (venta['servicio'] ?? '').toString().toLowerCase();
-      final estado = (venta['estado'] ?? '').toString().toLowerCase();
-      final monto = (venta['monto'] ?? '').toString().toLowerCase();
-
-      return cliente.contains(textoBusqueda) ||
-          servicio.contains(textoBusqueda) ||
-          estado.contains(textoBusqueda) ||
-          monto.contains(textoBusqueda);
-    }).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF1565C0),
-        foregroundColor: Colors.white,
-        elevation: 5,
-        icon: const Icon(Icons.add_rounded),
-        label: Text(
-          'Venta',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-        ),
-        onPressed: abrirAgregarVenta,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-              child: Column(
-                children: [
-                  encabezadoVentas(),
-                  buscadorVentas(),
-                ],
-              ),
+    return AnimatedBuilder(
+      animation: viewModel,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          floatingActionButton: FloatingActionButton.extended(
+            backgroundColor: const Color(0xFF1565C0),
+            foregroundColor: Colors.white,
+            elevation: 5,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              'Venta',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
             ),
-            Expanded(
-              child: FutureBuilder<SesionUsuario>(
-                future: sesionFuture,
-                builder: (context, sesionSnapshot) {
-                  if (!sesionSnapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final sesion = sesionSnapshot.data!;
-
-                  return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('ventas')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return Center(
-                          child: Text('Error: ${snapshot.error}'),
-                        );
+            onPressed: abrirAgregarVenta,
+          ),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                  child: Column(
+                    children: [encabezadoVentas(), buscadorVentas()],
+                  ),
+                ),
+                Expanded(
+                  child: FutureBuilder<SesionUsuario>(
+                    future: sesionFuture,
+                    builder: (context, sesionSnapshot) {
+                      if (!sesionSnapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
                       }
 
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
-                        );
-                      }
+                      final sesion = sesionSnapshot.data!;
 
-                      final ventas = filtrarVentas(snapshot.data!.docs, sesion);
+                      return StreamBuilder<List<VentaModel>>(
+                        stream: viewModel.ventasStream,
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Text('Error: ${snapshot.error}'),
+                            );
+                          }
 
-                      if (ventas.isEmpty) {
-                        return estadoVacio();
-                      }
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
 
-                      return ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 100),
-                        itemCount: ventas.length,
-                        itemBuilder: (context, index) {
-                          final venta =
-                              ventas[index].data() as Map<String, dynamic>;
+                          final ventas = viewModel.filtrarVentas(
+                            snapshot.data ?? [],
+                            sesion,
+                          );
 
-                          return tarjetaVenta(
-                            ventaId: ventas[index].id,
-                            venta: venta,
+                          if (ventas.isEmpty) {
+                            return estadoVacio();
+                          }
+
+                          return ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(18, 16, 18, 100),
+                            itemCount: ventas.length,
+                            itemBuilder: (context, index) {
+                              return tarjetaVenta(venta: ventas[index]);
+                            },
                           );
                         },
                       );
                     },
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

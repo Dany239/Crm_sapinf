@@ -1,11 +1,14 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/cliente_model.dart';
 import '../models/venta_model.dart';
+import '../repositories/clientes_repository.dart';
 import '../repositories/ventas_repository.dart';
 import '../servicios/sesion_usuario.dart';
 
 class EditarVentaViewModel extends ChangeNotifier {
   final VentasRepository _ventasRepository;
+  final ClientesRepository _clientesRepository;
   final String ventaId;
   final VentaModel ventaOriginal;
 
@@ -13,7 +16,9 @@ class EditarVentaViewModel extends ChangeNotifier {
     required this.ventaId,
     required Map<String, dynamic> venta,
     VentasRepository? ventasRepository,
+    ClientesRepository? clientesRepository,
   }) : _ventasRepository = ventasRepository ?? VentasRepository(),
+       _clientesRepository = clientesRepository ?? ClientesRepository(),
        ventaOriginal = VentaModel.fromMap(venta, id: ventaId) {
     clienteIdSeleccionado = ventaOriginal.clienteId;
     clienteNombreSeleccionado = ventaOriginal.cliente;
@@ -28,6 +33,10 @@ class EditarVentaViewModel extends ChangeNotifier {
   bool cargando = false;
   bool eliminando = false;
   String? mensajeError;
+
+  Stream<List<ClienteModel>> escucharClientesDisponibles(SesionUsuario sesion) {
+    return _clientesRepository.escucharClientesDisponibles(sesion);
+  }
 
   void seleccionarCliente({
     required String clienteId,
