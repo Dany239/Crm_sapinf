@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-import '../../servicios/sesion_usuario.dart';
-import '../../servicios/notificaciones_servicio.dart';
 import '../../servicios/seleccionar_servicios_pantalla.dart';
+import '../../viewmodels/agregar_cliente_viewmodel.dart';
 
 class AgregarClientePantalla extends StatefulWidget {
   const AgregarClientePantalla({super.key});
@@ -20,79 +18,52 @@ class _AgregarClientePantallaState extends State<AgregarClientePantalla> {
   final correoController = TextEditingController();
   final empresaController = TextEditingController();
   final direccionController = TextEditingController();
-  List<Map<String, String>> serviciosSeleccionados = [];
+  late final AgregarClienteViewModel viewModel;
 
-  bool cargando = false;
-
-  Future<void> guardarCliente() async {
-    if (nombreController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('El nombre es obligatorio')),
-      );
-      return;
-    }
-    if (serviciosSeleccionados.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selecciona al menos un servicio de interés'),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      cargando = true;
-    });
-
-    final sesion = await obtenerSesionUsuario();
-
-    final referencia =
-        await FirebaseFirestore.instance.collection('clientes').add({
-      'nombre': nombreController.text.trim(),
-      'telefono': telefonoController.text.trim(),
-      'correo': correoController.text.trim(),
-      'empresa': empresaController.text.trim(),
-      'direccion': direccionController.text.trim(),
-      'serviciosInteresIds':
-          serviciosSeleccionados.map((servicio) => servicio['id']).toList(),
-      'serviciosInteresNombres': serviciosSeleccionados
-          .map((servicio) => servicio['nombre'])
-          .toList(),
-      'estadoCliente': 'Cliente potencial',
-      ...datosPropietario(sesion),
-      'fechaRegistro': FieldValue.serverTimestamp(),
-    });
-
-    await NotificacionesServicio.crear(
-      titulo: 'Nuevo cliente potencial',
-      descripcion:
-          '${sesion.nombre} ingres\u00f3 a ${nombreController.text.trim()}.',
-      tipo: 'cliente',
-      icono: 'person_add',
-      color: 'blue',
-      autor: sesion,
-      usuariosDestinatarios: [sesion.uid],
-      referenciaId: referencia.id,
-      referenciaColeccion: 'clientes',
-    );
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cliente potencial guardado correctamente')),
-    );
-
-    Navigator.pop(context);
+  @override
+  void initState() {
+    super.initState();
+    viewModel = AgregarClienteViewModel();
   }
 
   @override
   void dispose() {
+    viewModel.dispose();
     nombreController.dispose();
     telefonoController.dispose();
     correoController.dispose();
     empresaController.dispose();
     direccionController.dispose();
     super.dispose();
+  }
+
+  Future<void> guardarCliente() async {
+    final guardado = await viewModel.guardarCliente(
+      nombre: nombreController.text,
+      telefono: telefonoController.text,
+      correo: correoController.text,
+      empresa: empresaController.text,
+      direccion: direccionController.text,
+    );
+
+    if (!mounted) return;
+
+    if (!guardado) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            viewModel.mensajeError ?? 'No se pudo guardar el cliente potencial',
+          ),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cliente potencial guardado correctamente')),
+    );
+
+    Navigator.pop(context);
   }
 
   Future<void> seleccionarContacto() async {
@@ -155,17 +126,52 @@ class _AgregarClientePantallaState extends State<AgregarClientePantalla> {
       context,
       MaterialPageRoute(
         builder: (context) => SeleccionarServiciosPantalla(
-          seleccionInicial: serviciosSeleccionados,
+          seleccionInicial: viewModel.serviciosSeleccionados,
         ),
       ),
     );
 
     if (resultado != null && mounted) {
-      setState(() => serviciosSeleccionados = resultado);
+      viewModel.actualizarServicios(resultado);
     }
   }
 
+  InputDecoration campoDecoracion({
+    required String label,
+    required IconData icono,
+    String? hintText,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hintText,
+      prefixIcon: Icon(icono, color: const Color(0xFF1565C0)),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: const Color(0xFFF8FAFC),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFF1565C0), width: 1.4),
+      ),
+      labelStyle: GoogleFonts.poppins(
+        color: Colors.grey.shade600,
+        fontSize: 13,
+      ),
+    );
+  }
+
   Widget selectorServicios() {
+    final serviciosSeleccionados = viewModel.serviciosSeleccionados;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -226,8 +232,8 @@ class _AgregarClientePantallaState extends State<AgregarClientePantalla> {
                         serviciosSeleccionados.isEmpty
                             ? 'Elige uno o varios del catálogo'
                             : serviciosSeleccionados
-                                .map((servicio) => servicio['nombre'])
-                                .join(', '),
+                                  .map((servicio) => servicio['nombre'])
+                                  .join(', '),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.poppins(
@@ -250,55 +256,13 @@ class _AgregarClientePantallaState extends State<AgregarClientePantalla> {
     );
   }
 
-  InputDecoration campoDecoracion({
-    required String label,
-    required IconData icono,
-    String? hintText,
-    Widget? suffixIcon,
-  }) {
-    return InputDecoration(
-      labelText: label,
-      hintText: hintText,
-      prefixIcon: Icon(icono, color: const Color(0xFF1565C0)),
-      suffixIcon: suffixIcon,
-      filled: true,
-      fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: Colors.grey.shade200),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(
-          color: Color(0xFF1565C0),
-          width: 1.4,
-        ),
-      ),
-      labelStyle: GoogleFonts.poppins(
-        color: Colors.grey.shade600,
-        fontSize: 13,
-      ),
-    );
-  }
-
   Widget encabezadoCliente() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1565C0),
-            Color(0xFF29B6F6),
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -379,143 +343,148 @@ class _AgregarClientePantallaState extends State<AgregarClientePantalla> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        foregroundColor: const Color(0xFF1F2937),
-        title: Text(
-          'Agregar Cliente potencial',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
-        child: Column(
-          children: [
-            encabezadoCliente(),
-            const SizedBox(height: 22),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.045),
-                    blurRadius: 14,
-                    offset: const Offset(0, 8),
+    return AnimatedBuilder(
+      animation: viewModel,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            foregroundColor: const Color(0xFF1F2937),
+            title: Text(
+              'Agregar Cliente potencial',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+            ),
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
+            child: Column(
+              children: [
+                encabezadoCliente(),
+                const SizedBox(height: 22),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.045),
+                        blurRadius: 14,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: nombreController,
-                    decoration: campoDecoracion(
-                      label: 'Nombre',
-                      icono: Icons.person,
-                      hintText: 'Nombre del prospecto',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: telefonoController,
-                    keyboardType: TextInputType.phone,
-                    decoration: campoDecoracion(
-                      label: 'Teléfono',
-                      icono: Icons.phone,
-                      suffixIcon: IconButton(
-                        tooltip: 'Seleccionar contacto',
-                        onPressed: seleccionarContacto,
-                        icon: const Icon(
-                          Icons.contacts_rounded,
-                          color: Color(0xFF1565C0),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: nombreController,
+                        decoration: campoDecoracion(
+                          label: 'Nombre',
+                          icono: Icons.person,
+                          hintText: 'Nombre del prospecto',
                         ),
                       ),
-                      hintText: 'Número de contacto',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: correoController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: campoDecoracion(
-                      label: 'Correo',
-                      icono: Icons.email,
-                      hintText: 'correo@empresa.com',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: empresaController,
-                    decoration: campoDecoracion(
-                      label: 'Empresa',
-                      icono: Icons.business,
-                      hintText: 'Nombre de la empresa',
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: direccionController,
-                    maxLines: 2,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: campoDecoracion(
-                      label: 'Direcci\u00f3n',
-                      icono: Icons.location_on_outlined,
-                      hintText: 'Direcci\u00f3n del cliente potencial',
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  selectorServicios(),
-                ],
-              ),
-            ),
-            const SizedBox(height: 22),
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1565C0),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                onPressed: cargando ? null : guardarCliente,
-                child: cargando
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.4,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.save_rounded, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Guardar cliente potencial',
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: telefonoController,
+                        keyboardType: TextInputType.phone,
+                        decoration: campoDecoracion(
+                          label: 'Teléfono',
+                          icono: Icons.phone,
+                          suffixIcon: IconButton(
+                            tooltip: 'Seleccionar contacto',
+                            onPressed: seleccionarContacto,
+                            icon: const Icon(
+                              Icons.contacts_rounded,
+                              color: Color(0xFF1565C0),
                             ),
                           ),
-                        ],
+                          hintText: 'Número de contacto',
+                        ),
                       ),
-              ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: correoController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: campoDecoracion(
+                          label: 'Correo',
+                          icono: Icons.email,
+                          hintText: 'correo@empresa.com',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: empresaController,
+                        decoration: campoDecoracion(
+                          label: 'Empresa',
+                          icono: Icons.business,
+                          hintText: 'Nombre de la empresa',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: direccionController,
+                        maxLines: 2,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: campoDecoracion(
+                          label: 'Dirección',
+                          icono: Icons.location_on_outlined,
+                          hintText: 'Dirección del cliente potencial',
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      selectorServicios(),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1565C0),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    onPressed: viewModel.cargando ? null : guardarCliente,
+                    child: viewModel.cargando
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.4,
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.save_rounded, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Guardar cliente potencial',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

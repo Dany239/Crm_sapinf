@@ -1,20 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 
 import 'agregar_cliente_pantalla.dart';
 import 'detalle_cliente_pantalla.dart';
 import 'editar_cliente_pantalla.dart';
+import '../../models/cliente_model.dart';
 import '../../servicios/sesion_usuario.dart';
+import '../../viewmodels/clientes_viewmodel.dart';
 
 class ClientesPantalla extends StatefulWidget {
   final bool mostrarClientes;
 
-  const ClientesPantalla({
-    super.key,
-    this.mostrarClientes = false,
-  });
+  const ClientesPantalla({super.key, this.mostrarClientes = false});
 
   @override
   State<ClientesPantalla> createState() => _ClientesPantallaState();
@@ -22,61 +19,30 @@ class ClientesPantalla extends StatefulWidget {
 
 class _ClientesPantallaState extends State<ClientesPantalla> {
   final buscarController = TextEditingController();
-  String textoBusqueda = '';
-  late bool mostrarClientes;
   late Future<SesionUsuario> sesionFuture;
+  late final ClientesViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
-    mostrarClientes = widget.mostrarClientes;
+    viewModel = ClientesViewModel(
+      mostrarClientesInicial: widget.mostrarClientes,
+    );
     sesionFuture = obtenerSesionUsuario();
   }
 
   @override
   void dispose() {
     buscarController.dispose();
+    viewModel.dispose();
     super.dispose();
   }
 
   void abrirAgregarCliente() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const AgregarClientePantalla(),
-      ),
+      MaterialPageRoute(builder: (context) => const AgregarClientePantalla()),
     );
-  }
-
-  List<QueryDocumentSnapshot> filtrarClientes(
-    List<QueryDocumentSnapshot> docs,
-    SesionUsuario sesion,
-  ) {
-    return docs.where((doc) {
-      final cliente = doc.data() as Map<String, dynamic>;
-
-      if (!sesion.esAdministrador && cliente['vendedorId'] != sesion.uid) {
-        return false;
-      }
-
-      final nombre = (cliente['nombre'] ?? '').toString().toLowerCase();
-      final empresa = (cliente['empresa'] ?? '').toString().toLowerCase();
-      final telefono = (cliente['telefono'] ?? '').toString().toLowerCase();
-      final correo = (cliente['correo'] ?? '').toString().toLowerCase();
-      final estadoCliente =
-          (cliente['estadoCliente'] ?? 'Cliente potencial').toString();
-      final esCliente = estadoCliente == 'Cliente';
-
-      if (mostrarClientes != esCliente) {
-        return false;
-      }
-
-      return nombre.contains(textoBusqueda) ||
-          empresa.contains(textoBusqueda) ||
-          telefono.contains(textoBusqueda) ||
-          correo.contains(textoBusqueda) ||
-          estadoCliente.toLowerCase().contains(textoBusqueda);
-    }).toList();
   }
 
   Widget tabFiltro({
@@ -125,10 +91,7 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
     );
   }
 
-  Widget infoLinea({
-    required IconData icono,
-    required String texto,
-  }) {
+  Widget infoLinea({required IconData icono, required String texto}) {
     return Padding(
       padding: const EdgeInsets.only(top: 5),
       child: Row(
@@ -151,18 +114,13 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
     );
   }
 
-  Widget tarjetaCliente({
-    required String clienteId,
-    required Map<String, dynamic> cliente,
-  }) {
-    final nombre = cliente['nombre']?.toString() ?? 'Sin nombre';
-    final telefono = cliente['telefono']?.toString() ?? 'Sin teléfono';
-    final correo = cliente['correo']?.toString() ?? 'Sin correo';
-    final empresa = cliente['empresa']?.toString() ?? 'Sin empresa';
-    final vendedor =
-        cliente['vendedorNombre']?.toString() ?? 'Sin vendedor asignado';
-    final estadoCliente =
-        cliente['estadoCliente']?.toString() ?? 'Cliente potencial';
+  Widget tarjetaCliente({required ClienteModel cliente}) {
+    final nombre = cliente.nombre;
+    final telefono = cliente.telefono;
+    final correo = cliente.correo;
+    final empresa = cliente.empresa;
+    final vendedor = cliente.vendedorNombre ?? 'Sin vendedor asignado';
+    final estadoCliente = cliente.estadoCliente;
     final esCliente = estadoCliente == 'Cliente';
     final colorEstado = esCliente ? Colors.green : Colors.orange;
 
@@ -187,8 +145,8 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
             context,
             MaterialPageRoute(
               builder: (context) => DetalleClientePantalla(
-                clienteId: clienteId,
-                cliente: cliente,
+                clienteId: cliente.id ?? '',
+                cliente: cliente.toPlainMap(),
               ),
             ),
           );
@@ -259,7 +217,7 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
                     ),
                     infoLinea(
                       icono: Icons.calendar_today_outlined,
-                      texto: fechaCorta(cliente['fechaRegistro']),
+                      texto: viewModel.fechaCorta(cliente.fechaRegistro),
                     ),
                   ],
                 ),
@@ -272,8 +230,8 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => EditarClientePantalla(
-                        clienteId: clienteId,
-                        cliente: cliente,
+                        clienteId: cliente.id ?? '',
+                        cliente: cliente.toPlainMap(),
                       ),
                     ),
                   );
@@ -314,14 +272,14 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Icon(
-                mostrarClientes ? Icons.people : Icons.person_search,
+                viewModel.mostrarClientes ? Icons.people : Icons.person_search,
                 color: const Color(0xFF1565C0),
                 size: 34,
               ),
             ),
             const SizedBox(height: 14),
             Text(
-              mostrarClientes
+              viewModel.mostrarClientes
                   ? 'No hay clientes registrados'
                   : 'No hay clientes potenciales',
               textAlign: TextAlign.center,
@@ -348,252 +306,241 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF1565C0),
-        foregroundColor: Colors.white,
-        onPressed: abrirAgregarCliente,
-        child: const Icon(Icons.add),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-              child: Column(
-                children: [
-                  if (Navigator.canPop(context)) ...[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
+    return AnimatedBuilder(
+      animation: viewModel,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          floatingActionButton: FloatingActionButton(
+            backgroundColor: const Color(0xFF1565C0),
+            foregroundColor: Colors.white,
+            onPressed: abrirAgregarCliente,
+            child: const Icon(Icons.add),
+          ),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+                  child: Column(
+                    children: [
+                      if (Navigator.canPop(context)) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: InkWell(
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.grey.shade200),
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.grey.shade200),
+                              ),
+                              child: Icon(
+                                Icons.arrow_back,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
                           ),
-                          child: Icon(
-                            Icons.arrow_back,
-                            color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xFF1565C0,
+                              ).withValues(alpha: 0.22),
+                              blurRadius: 18,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 54,
+                              height: 54,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Icon(
+                                viewModel.mostrarClientes
+                                    ? Icons.verified_user
+                                    : Icons.person_add,
+                                color: Colors.white,
+                                size: 30,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    viewModel.mostrarClientes
+                                        ? 'Clientes'
+                                        : 'Clientes potenciales',
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    viewModel.mostrarClientes
+                                        ? 'Personas que ya concretaron con SAPINF.'
+                                        : 'Prospectos en seguimiento comercial.',
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.86,
+                                      ),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF1565C0),
-                          Color(0xFF29B6F6),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color:
-                              const Color(0xFF1565C0).withValues(alpha: 0.22),
-                          blurRadius: 18,
-                          offset: const Offset(0, 10),
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.grey.shade200),
                         ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 54,
-                          height: 54,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Icon(
-                            mostrarClientes
-                                ? Icons.verified_user
-                                : Icons.person_add,
-                            color: Colors.white,
-                            size: 30,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                mostrarClientes
-                                    ? 'Clientes'
-                                    : 'Clientes potenciales',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                mostrarClientes
-                                    ? 'Personas que ya concretaron con SAPINF.'
-                                    : 'Prospectos en seguimiento comercial.',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white.withValues(alpha: 0.86),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        tabFiltro(
-                          texto: 'Potenciales',
-                          icono: Icons.person_search,
-                          activo: !mostrarClientes,
-                          onTap: () {
-                            setState(() {
-                              mostrarClientes = false;
-                            });
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        tabFiltro(
-                          texto: 'Clientes',
-                          icono: Icons.verified_user,
-                          activo: mostrarClientes,
-                          onTap: () {
-                            setState(() {
-                              mostrarClientes = true;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: buscarController,
-                    decoration: InputDecoration(
-                      hintText: mostrarClientes
-                          ? 'Buscar cliente...'
-                          : 'Buscar cliente potencial...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: textoBusqueda.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () {
-                                buscarController.clear();
-                                setState(() {
-                                  textoBusqueda = '';
-                                });
+                        child: Row(
+                          children: [
+                            tabFiltro(
+                              texto: 'Potenciales',
+                              icono: Icons.person_search,
+                              activo: !viewModel.mostrarClientes,
+                              onTap: () {
+                                viewModel.cambiarFiltro(false);
                               },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide(color: Colors.grey.shade200),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF1565C0),
-                          width: 1.3,
+                            ),
+                            const SizedBox(width: 8),
+                            tabFiltro(
+                              texto: 'Clientes',
+                              icono: Icons.verified_user,
+                              activo: viewModel.mostrarClientes,
+                              onTap: () {
+                                viewModel.cambiarFiltro(true);
+                              },
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    onChanged: (valor) {
-                      setState(() {
-                        textoBusqueda = valor.toLowerCase();
-                      });
-                    },
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: buscarController,
+                        decoration: InputDecoration(
+                          hintText: viewModel.mostrarClientes
+                              ? 'Buscar cliente...'
+                              : 'Buscar cliente potencial...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: viewModel.textoBusqueda.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () {
+                                    buscarController.clear();
+                                    viewModel.limpiarBusqueda();
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF1565C0),
+                              width: 1.3,
+                            ),
+                          ),
+                        ),
+                        onChanged: (valor) {
+                          viewModel.actualizarBusqueda(valor);
+                        },
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: FutureBuilder<SesionUsuario>(
-                future: sesionFuture,
-                builder: (context, sesionSnapshot) {
-                  if (!sesionSnapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final sesion = sesionSnapshot.data!;
-
-                  return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('clientes')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return Center(child: Text('Error: ${snapshot.error}'));
-                      }
-
-                      if (snapshot.connectionState == ConnectionState.waiting) {
+                ),
+                Expanded(
+                  child: FutureBuilder<SesionUsuario>(
+                    future: sesionFuture,
+                    builder: (context, sesionSnapshot) {
+                      if (!sesionSnapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
                       }
 
-                      final clientes = filtrarClientes(
-                        snapshot.data!.docs,
-                        sesion,
-                      );
+                      final sesion = sesionSnapshot.data!;
 
-                      if (clientes.isEmpty) {
-                        return estadoVacio();
-                      }
+                      return StreamBuilder<List<ClienteModel>>(
+                        stream: viewModel.clientesStream,
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Text('Error: ${snapshot.error}'),
+                            );
+                          }
 
-                      return ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(18, 8, 18, 96),
-                        itemCount: clientes.length,
-                        itemBuilder: (context, index) {
-                          final cliente =
-                              clientes[index].data() as Map<String, dynamic>;
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
 
-                          return tarjetaCliente(
-                            clienteId: clientes[index].id,
-                            cliente: cliente,
+                          final clientes = viewModel.filtrarClientes(
+                            snapshot.data ?? [],
+                            sesion,
+                          );
+
+                          if (clientes.isEmpty) {
+                            return estadoVacio();
+                          }
+
+                          return ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(18, 8, 18, 96),
+                            itemCount: clientes.length,
+                            itemBuilder: (context, index) {
+                              return tarjetaCliente(cliente: clientes[index]);
+                            },
                           );
                         },
                       );
                     },
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
-}
-
-String fechaCorta(dynamic valor) {
-  if (valor is! Timestamp) return 'Sin fecha';
-  return DateFormat('dd/MM/yyyy HH:mm').format(valor.toDate());
 }
