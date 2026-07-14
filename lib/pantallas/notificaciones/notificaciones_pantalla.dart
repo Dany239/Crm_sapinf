@@ -1,9 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../servicios/notificaciones_servicio.dart';
+import '../../models/notificacion_model.dart';
 import '../../servicios/sesion_usuario.dart';
+import '../../viewmodels/notificaciones_viewmodel.dart';
 
 class NotificacionesPantalla extends StatefulWidget {
   const NotificacionesPantalla({super.key});
@@ -13,12 +13,19 @@ class NotificacionesPantalla extends StatefulWidget {
 }
 
 class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
+  final NotificacionesViewModel viewModel = NotificacionesViewModel();
   late final Future<SesionUsuario> sesionFuture;
 
   @override
   void initState() {
     super.initState();
     sesionFuture = obtenerSesionUsuario();
+  }
+
+  @override
+  void dispose() {
+    viewModel.dispose();
+    super.dispose();
   }
 
   IconData obtenerIcono(String icono) {
@@ -47,35 +54,6 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
       default:
         return const Color(0xFF1565C0);
     }
-  }
-
-  String tiempoRelativo(Timestamp? fecha) {
-    if (fecha == null) return 'Ahora';
-
-    final diferencia = DateTime.now().difference(fecha.toDate());
-    if (diferencia.inMinutes < 1) return 'Hace unos segundos';
-    if (diferencia.inMinutes < 60) return 'Hace ${diferencia.inMinutes} min';
-    if (diferencia.inHours < 24) return 'Hace ${diferencia.inHours} h';
-    return 'Hace ${diferencia.inDays} d\u00edas';
-  }
-
-  Future<void> marcarTodasComoLeidas(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> documentos,
-    String uid,
-  ) async {
-    final batch = FirebaseFirestore.instance.batch();
-    var cambios = 0;
-
-    for (final doc in documentos) {
-      if (!NotificacionesServicio.estaLeidaPor(doc.data(), uid)) {
-        batch.update(doc.reference, {
-          'leidaPor': FieldValue.arrayUnion([uid]),
-        });
-        cambios++;
-      }
-    }
-
-    if (cambios > 0) await batch.commit();
   }
 
   @override
@@ -122,11 +100,8 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
   }
 
   Widget _contenido(SesionUsuario sesion) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('notificaciones')
-          .orderBy('fecha', descending: true)
-          .snapshots(),
+    return StreamBuilder<List<NotificacionModel>>(
+      stream: viewModel.notificacionesStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(child: Text('Error: ${snapshot.error}'));
@@ -135,19 +110,14 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final notificaciones = snapshot.data!.docs
-            .where(
-              (doc) => NotificacionesServicio.esVisiblePara(doc.data(), sesion),
-            )
-            .toList();
-        final pendientes = notificaciones
-            .where(
-              (doc) => !NotificacionesServicio.estaLeidaPor(
-                doc.data(),
-                sesion.uid,
-              ),
-            )
-            .length;
+        final notificaciones = viewModel.filtrarVisibles(
+          snapshot.data ?? [],
+          sesion,
+        );
+        final pendientes = viewModel.contarPendientes(
+          notificaciones,
+          sesion.uid,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,7 +181,7 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
                   const Spacer(),
                   if (pendientes > 0)
                     TextButton(
-                      onPressed: () => marcarTodasComoLeidas(
+                      onPressed: () => viewModel.marcarTodasComoLeidas(
                         notificaciones,
                         sesion.uid,
                       ),
@@ -237,20 +207,13 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
     );
   }
 
-  Widget _tarjeta(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-    SesionUsuario sesion,
-  ) {
-    final data = doc.data();
-    final leida = NotificacionesServicio.estaLeidaPor(data, sesion.uid);
-    final color = obtenerColor(data['color']?.toString() ?? '');
+  Widget _tarjeta(NotificacionModel notificacion, SesionUsuario sesion) {
+    final leida = notificacion.estaLeidaPor(sesion.uid);
+    final color = obtenerColor(notificacion.color);
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: () => NotificacionesServicio.marcarLeida(
-        doc.reference,
-        sesion.uid,
-      ),
+      onTap: () => viewModel.marcarLeida(notificacion, sesion.uid),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(13),
@@ -258,8 +221,9 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
           color: leida ? const Color(0xFFF8FAFC) : Colors.white,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color:
-                leida ? const Color(0xFFE8ECF2) : color.withValues(alpha: 0.28),
+            color: leida
+                ? const Color(0xFFE8ECF2)
+                : color.withValues(alpha: 0.28),
           ),
         ),
         child: Row(
@@ -273,7 +237,7 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                obtenerIcono(data['icono']?.toString() ?? ''),
+                obtenerIcono(notificacion.icono),
                 color: color,
                 size: 21,
               ),
@@ -287,13 +251,14 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
                     children: [
                       Expanded(
                         child: Text(
-                          data['titulo']?.toString() ?? 'Notificaci\u00f3n',
+                          notificacion.titulo,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.poppins(
                             fontSize: 13,
-                            fontWeight:
-                                leida ? FontWeight.w600 : FontWeight.w700,
+                            fontWeight: leida
+                                ? FontWeight.w600
+                                : FontWeight.w700,
                             color: const Color(0xFF1F2937),
                           ),
                         ),
@@ -311,7 +276,7 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    data['descripcion']?.toString() ?? '',
+                    notificacion.descripcion,
                     maxLines: 4,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
@@ -322,7 +287,7 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    tiempoRelativo(data['fecha'] as Timestamp?),
+                    viewModel.tiempoRelativo(notificacion.fecha),
                     style: GoogleFonts.poppins(
                       fontSize: 10,
                       color: Colors.grey.shade500,
