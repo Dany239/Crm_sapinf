@@ -1,28 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../models/usuario_model.dart';
+import '../../viewmodels/usuarios_viewmodel.dart';
 import 'agregar_usuario_pantalla.dart';
 import 'editar_usuario_pantalla.dart';
 
-class UsuariosPantalla extends StatelessWidget {
+class UsuariosPantalla extends StatefulWidget {
   const UsuariosPantalla({super.key});
 
-  String tiempoDesdeUltimaActividad(dynamic valor) {
-    if (valor is! Timestamp) return 'Aun no registra actividad';
+  @override
+  State<UsuariosPantalla> createState() => _UsuariosPantallaState();
+}
 
-    final diferencia = DateTime.now().difference(valor.toDate());
+class _UsuariosPantallaState extends State<UsuariosPantalla> {
+  late final UsuariosViewModel viewModel;
 
-    if (diferencia.inMinutes < 1) return 'Ahora mismo';
-    if (diferencia.inMinutes < 60) {
-      return 'Hace ${diferencia.inMinutes} minutos';
-    }
-    if (diferencia.inHours < 24) {
-      return 'Hace ${diferencia.inHours} horas';
-    }
-    if (diferencia.inDays == 1) return 'Hace 1 dia';
-    return 'Hace ${diferencia.inDays} dias';
+  @override
+  void initState() {
+    super.initState();
+    viewModel = UsuariosViewModel();
+  }
+
+  @override
+  void dispose() {
+    viewModel.dispose();
+    super.dispose();
   }
 
   Widget accesoRestringido() {
@@ -67,15 +70,12 @@ class UsuariosPantalla extends StatelessWidget {
 
   Widget tarjetaUsuario({
     required BuildContext context,
-    required String id,
-    required Map<String, dynamic> usuario,
+    required UsuarioModel usuario,
   }) {
-    final rol = usuario['rol'] ?? 'Sin rol';
+    final rol = usuario.rol;
     final esAdmin = rol == 'administrador';
     final color = esAdmin ? Colors.indigo : const Color(0xFF1565C0);
-    final ultimaActividad = usuario['ultimaActividad'];
-    final estaActivo = ultimaActividad is Timestamp &&
-        DateTime.now().difference(ultimaActividad.toDate()).inMinutes <= 15;
+    final estaActivo = viewModel.estaActivo(usuario);
 
     return InkWell(
       borderRadius: BorderRadius.circular(20),
@@ -84,8 +84,8 @@ class UsuariosPantalla extends StatelessWidget {
           context,
           MaterialPageRoute(
             builder: (context) => EditarUsuarioPantalla(
-              usuarioId: id,
-              usuario: usuario,
+              usuarioId: usuario.id ?? '',
+              usuario: usuario.toPlainMap(),
             ),
           ),
         );
@@ -127,7 +127,7 @@ class UsuariosPantalla extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    usuario['nombre'] ?? 'Sin nombre',
+                    usuario.nombre,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
@@ -138,7 +138,7 @@ class UsuariosPantalla extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    usuario['correo'] ?? 'Sin correo',
+                    usuario.correo,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
@@ -164,7 +164,7 @@ class UsuariosPantalla extends StatelessWidget {
                         Expanded(
                           child: Text(
                             '${estaActivo ? 'Activo' : 'Sin actividad'} · '
-                            '${tiempoDesdeUltimaActividad(ultimaActividad)}',
+                            '${viewModel.tiempoDesdeUltimaActividad(usuario.ultimaActividad)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.poppins(
@@ -203,14 +203,71 @@ class UsuariosPantalla extends StatelessWidget {
     );
   }
 
+  Widget contenidoUsuarios() {
+    return StreamBuilder<List<UsuarioModel>>(
+      stream: viewModel.usuariosStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final usuarios = snapshot.data ?? [];
+
+        return Stack(
+          children: [
+            if (usuarios.isEmpty)
+              Center(
+                child: Text(
+                  'No hay usuarios registrados',
+                  style: GoogleFonts.poppins(),
+                ),
+              )
+            else
+              ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+                itemCount: usuarios.length,
+                itemBuilder: (context, index) {
+                  return tarjetaUsuario(
+                    context: context,
+                    usuario: usuarios[index],
+                  );
+                },
+              ),
+            Positioned(
+              right: 16,
+              bottom: 18,
+              child: FloatingActionButton.extended(
+                backgroundColor: const Color(0xFF1565C0),
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.person_add_rounded),
+                label: Text(
+                  'Nuevo',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AgregarUsuarioPantalla(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final usuarioActual = FirebaseAuth.instance.currentUser;
-
-    if (usuarioActual == null) {
-      return const Scaffold(
-        body: Center(child: Text('No hay usuario activo')),
-      );
+    if (!viewModel.hayUsuarioActivo) {
+      return const Scaffold(body: Center(child: Text('No hay usuario activo')));
     }
 
     return Scaffold(
@@ -224,89 +281,18 @@ class UsuariosPantalla extends StatelessWidget {
           style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
         ),
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('usuarios')
-            .doc(usuarioActual.uid)
-            .snapshots(),
+      body: StreamBuilder<UsuarioModel?>(
+        stream: viewModel.usuarioActualStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final data = snapshot.data?.data() as Map<String, dynamic>?;
-          final rol = data?['rol']?.toString() ?? 'vendedor';
-
-          if (rol != 'administrador') {
+          if (!viewModel.puedeGestionarUsuarios(snapshot.data)) {
             return accesoRestringido();
           }
 
-          return StreamBuilder<QuerySnapshot>(
-            stream:
-                FirebaseFirestore.instance.collection('usuarios').snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
-              }
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final usuarios = snapshot.data!.docs;
-
-              return Stack(
-                children: [
-                  if (usuarios.isEmpty)
-                    Center(
-                      child: Text(
-                        'No hay usuarios registrados',
-                        style: GoogleFonts.poppins(),
-                      ),
-                    )
-                  else
-                    ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-                      itemCount: usuarios.length,
-                      itemBuilder: (context, index) {
-                        final usuario =
-                            usuarios[index].data() as Map<String, dynamic>;
-
-                        return tarjetaUsuario(
-                          context: context,
-                          id: usuarios[index].id,
-                          usuario: usuario,
-                        );
-                      },
-                    ),
-                  Positioned(
-                    right: 16,
-                    bottom: 18,
-                    child: FloatingActionButton.extended(
-                      backgroundColor: const Color(0xFF1565C0),
-                      foregroundColor: Colors.white,
-                      icon: const Icon(Icons.person_add_rounded),
-                      label: Text(
-                        'Nuevo',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                const AgregarUsuarioPantalla(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              );
-            },
-          );
+          return contenidoUsuarios();
         },
       ),
     );
