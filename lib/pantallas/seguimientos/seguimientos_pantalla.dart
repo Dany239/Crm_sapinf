@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 
+import '../../models/seguimiento_model.dart';
+import '../../servicios/sesion_usuario.dart';
+import '../../viewmodels/seguimientos_viewmodel.dart';
 import 'agregar_seguimiento_pantalla.dart';
 import 'editar_seguimiento_pantalla.dart';
-import '../../servicios/sesion_usuario.dart';
 
 class SeguimientosPantalla extends StatefulWidget {
   const SeguimientosPantalla({super.key});
@@ -16,18 +16,19 @@ class SeguimientosPantalla extends StatefulWidget {
 
 class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
   final buscarController = TextEditingController();
-  String busqueda = '';
-  String filtroEstado = 'Todos';
-  late Future<SesionUsuario> sesionFuture;
+  late final Future<SesionUsuario> sesionFuture;
+  late final SeguimientosViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
     sesionFuture = obtenerSesionUsuario();
+    viewModel = SeguimientosViewModel();
   }
 
   @override
   void dispose() {
+    viewModel.dispose();
     buscarController.dispose();
     super.dispose();
   }
@@ -55,33 +56,8 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
     return Colors.orange;
   }
 
-  List<QueryDocumentSnapshot> filtrarSeguimientos(
-    List<QueryDocumentSnapshot> docs,
-    SesionUsuario sesion,
-  ) {
-    return docs.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-
-      if (!sesion.esAdministrador && data['vendedorId'] != sesion.uid) {
-        return false;
-      }
-
-      final texto = [
-        data['cliente'],
-        data['comentario'],
-        data['tipo'],
-        data['estado'],
-      ].join(' ').toLowerCase();
-      final coincideBusqueda = texto.contains(busqueda.toLowerCase());
-      final estado = (data['estado'] ?? 'Pendiente').toString();
-      final coincideEstado = filtroEstado == 'Todos' || estado == filtroEstado;
-
-      return coincideBusqueda && coincideEstado;
-    }).toList();
-  }
-
   Widget filtroChip(String texto) {
-    final activo = filtroEstado == texto;
+    final activo = viewModel.filtroEstado == texto;
 
     return ChoiceChip(
       label: Text(texto),
@@ -97,11 +73,7 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
         fontWeight: FontWeight.w700,
         fontSize: 12,
       ),
-      onSelected: (_) {
-        setState(() {
-          filtroEstado = texto;
-        });
-      },
+      onSelected: (_) => viewModel.cambiarFiltroEstado(texto),
     );
   }
 
@@ -110,10 +82,7 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1565C0),
-            Color(0xFF29B6F6),
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -186,16 +155,21 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
       ),
       child: TextField(
         controller: buscarController,
-        onChanged: (value) {
-          setState(() {
-            busqueda = value;
-          });
-        },
+        onChanged: viewModel.actualizarBusqueda,
         style: GoogleFonts.poppins(),
         decoration: InputDecoration(
           hintText: 'Buscar seguimiento...',
           hintStyle: GoogleFonts.poppins(color: Colors.grey.shade500),
           prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: viewModel.busqueda.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () {
+                    buscarController.clear();
+                    viewModel.limpiarBusqueda();
+                  },
+                )
+              : null,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 15),
         ),
@@ -203,19 +177,15 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
     );
   }
 
-  Widget tarjetaSeguimiento({
-    required String id,
-    required Map<String, dynamic> seguimiento,
-  }) {
-    final cliente = seguimiento['cliente'] ?? 'Sin cliente';
-    final comentario = seguimiento['comentario'] ?? 'Sin comentario';
-    final tipo = seguimiento['tipo'] ?? 'Seguimiento';
-    final estado = seguimiento['estado'] ?? 'Pendiente';
-    final vendedor =
-        seguimiento['vendedorNombre']?.toString() ?? 'Sin vendedor asignado';
-    final fechaActividad = estado == 'Realizado'
-        ? seguimiento['fechaRealizacion']
-        : seguimiento['fechaProxima'] ?? seguimiento['fechaRegistro'];
+  Widget tarjetaSeguimiento({required SeguimientoModel seguimiento}) {
+    final cliente = seguimiento.cliente ?? 'Sin cliente';
+    final comentario = seguimiento.comentario.isEmpty
+        ? 'Sin comentario'
+        : seguimiento.comentario;
+    final tipo = seguimiento.tipo;
+    final estado = seguimiento.estado;
+    final vendedor = seguimiento.vendedorNombre ?? 'Sin vendedor asignado';
+    final fechaActividad = viewModel.fechaActividad(seguimiento);
     final tipoColor = colorTipo(tipo);
     final estadoColor = colorEstado(estado);
 
@@ -226,8 +196,8 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
           context,
           MaterialPageRoute(
             builder: (context) => EditarSeguimientoPantalla(
-              seguimientoId: id,
-              seguimiento: seguimiento,
+              seguimientoId: seguimiento.id ?? '',
+              seguimiento: seguimiento.toPlainMap(),
             ),
           ),
         );
@@ -285,7 +255,7 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '$vendedor \u00b7 ${fechaCorta(fechaActividad)}',
+                    '$vendedor · ${viewModel.fechaCorta(fechaActividad)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
@@ -377,49 +347,38 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        foregroundColor: Theme.of(context).colorScheme.onSurface,
-        title: Text(
-          'Seguimientos',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF1565C0),
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: Text(
-          'Nuevo',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-        ),
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AgregarSeguimientoPantalla(),
+    return AnimatedBuilder(
+      animation: viewModel,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            foregroundColor: Theme.of(context).colorScheme.onSurface,
+            title: Text(
+              'Seguimientos',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
             ),
-          );
-        },
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream:
-            FirebaseFirestore.instance.collection('seguimientos').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final todos = snapshot.data!.docs;
-
-          return FutureBuilder<SesionUsuario>(
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            backgroundColor: const Color(0xFF1565C0),
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              'Nuevo',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AgregarSeguimientoPantalla(),
+                ),
+              );
+            },
+          ),
+          body: FutureBuilder<SesionUsuario>(
             future: sesionFuture,
             builder: (context, sesionSnapshot) {
               if (!sesionSnapshot.hasData) {
@@ -427,51 +386,60 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
               }
 
               final sesion = sesionSnapshot.data!;
-              final seguimientos = filtrarSeguimientos(todos, sesion);
 
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-                children: [
-                  encabezado(seguimientos.length),
-                  const SizedBox(height: 16),
-                  buscador(),
-                  const SizedBox(height: 12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        filtroChip('Todos'),
-                        const SizedBox(width: 8),
-                        filtroChip('Pendiente'),
-                        const SizedBox(width: 8),
-                        filtroChip('Realizado'),
-                        const SizedBox(width: 8),
-                        filtroChip('Cancelado'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  if (seguimientos.isEmpty)
-                    SizedBox(height: 260, child: vacio())
-                  else
-                    ...seguimientos.map((doc) {
-                      final seguimiento = doc.data() as Map<String, dynamic>;
-                      return tarjetaSeguimiento(
-                        id: doc.id,
-                        seguimiento: seguimiento,
-                      );
-                    }),
-                ],
+              return StreamBuilder<List<SeguimientoModel>>(
+                stream: viewModel.seguimientosStream,
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final seguimientos = viewModel.filtrarSeguimientos(
+                    snapshot.data ?? [],
+                    sesion,
+                  );
+
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+                    children: [
+                      encabezado(seguimientos.length),
+                      const SizedBox(height: 16),
+                      buscador(),
+                      const SizedBox(height: 12),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            filtroChip('Todos'),
+                            const SizedBox(width: 8),
+                            filtroChip('Pendiente'),
+                            const SizedBox(width: 8),
+                            filtroChip('Realizado'),
+                            const SizedBox(width: 8),
+                            filtroChip('Cancelado'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      if (seguimientos.isEmpty)
+                        SizedBox(height: 260, child: vacio())
+                      else
+                        ...seguimientos.map(
+                          (seguimiento) =>
+                              tarjetaSeguimiento(seguimiento: seguimiento),
+                        ),
+                    ],
+                  );
+                },
               );
             },
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
-}
-
-String fechaCorta(dynamic valor) {
-  if (valor is! Timestamp) return 'Sin fecha';
-  return DateFormat('dd/MM/yyyy HH:mm').format(valor.toDate());
 }
