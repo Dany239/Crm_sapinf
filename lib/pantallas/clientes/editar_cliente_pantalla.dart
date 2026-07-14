@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../servicios/seleccionar_servicios_pantalla.dart';
+import '../../viewmodels/editar_cliente_viewmodel.dart';
 
 class EditarClientePantalla extends StatefulWidget {
   final String clienteId;
@@ -19,67 +19,69 @@ class EditarClientePantalla extends StatefulWidget {
 }
 
 class _EditarClientePantallaState extends State<EditarClientePantalla> {
-  late TextEditingController nombreController;
-  late TextEditingController telefonoController;
-  late TextEditingController correoController;
-  late TextEditingController empresaController;
-  late TextEditingController direccionController;
-  late List<Map<String, String>> serviciosSeleccionados;
-
-  bool cargando = false;
+  late final EditarClienteViewModel viewModel;
+  late final TextEditingController nombreController;
+  late final TextEditingController telefonoController;
+  late final TextEditingController correoController;
+  late final TextEditingController empresaController;
+  late final TextEditingController direccionController;
 
   @override
   void initState() {
     super.initState();
-
-    nombreController = TextEditingController(text: widget.cliente['nombre']);
-    telefonoController =
-        TextEditingController(text: widget.cliente['telefono']);
-    correoController = TextEditingController(text: widget.cliente['correo']);
-    empresaController = TextEditingController(text: widget.cliente['empresa']);
+    viewModel = EditarClienteViewModel(
+      clienteId: widget.clienteId,
+      cliente: widget.cliente,
+    );
+    nombreController = TextEditingController(
+      text: widget.cliente['nombre']?.toString() ?? '',
+    );
+    telefonoController = TextEditingController(
+      text: widget.cliente['telefono']?.toString() ?? '',
+    );
+    correoController = TextEditingController(
+      text: widget.cliente['correo']?.toString() ?? '',
+    );
+    empresaController = TextEditingController(
+      text: widget.cliente['empresa']?.toString() ?? '',
+    );
     direccionController = TextEditingController(
-      text: widget.cliente['direccion'] ?? '',
+      text: widget.cliente['direccion']?.toString() ?? '',
     );
-    final ids = List<String>.from(
-      widget.cliente['serviciosInteresIds'] ?? const [],
-    );
-    final nombres = List<String>.from(
-      widget.cliente['serviciosInteresNombres'] ?? const [],
-    );
-    serviciosSeleccionados = [
-      for (var index = 0; index < ids.length; index++)
-        {
-          'id': ids[index],
-          'nombre': index < nombres.length ? nombres[index] : 'Servicio',
-          'descripcion': '',
-          'logoBase64': '',
-        },
-    ];
+  }
+
+  @override
+  void dispose() {
+    viewModel.dispose();
+    nombreController.dispose();
+    telefonoController.dispose();
+    correoController.dispose();
+    empresaController.dispose();
+    direccionController.dispose();
+    super.dispose();
   }
 
   Future<void> actualizarCliente() async {
-    setState(() {
-      cargando = true;
-    });
-
-    await FirebaseFirestore.instance
-        .collection('clientes')
-        .doc(widget.clienteId)
-        .update({
-      'nombre': nombreController.text.trim(),
-      'telefono': telefonoController.text.trim(),
-      'correo': correoController.text.trim(),
-      'empresa': empresaController.text.trim(),
-      'direccion': direccionController.text.trim(),
-      'serviciosInteresIds':
-          serviciosSeleccionados.map((servicio) => servicio['id']).toList(),
-      'serviciosInteresNombres': serviciosSeleccionados
-          .map((servicio) => servicio['nombre'])
-          .toList(),
-      'fechaActualizacion': FieldValue.serverTimestamp(),
-    });
+    final actualizado = await viewModel.actualizarCliente(
+      nombre: nombreController.text,
+      telefono: telefonoController.text,
+      correo: correoController.text,
+      empresa: empresaController.text,
+      direccion: direccionController.text,
+    );
 
     if (!mounted) return;
+
+    if (!actualizado) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            viewModel.mensajeError ?? 'No se pudo actualizar el cliente',
+          ),
+        ),
+      );
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Cliente actualizado correctamente')),
@@ -105,10 +107,7 @@ class _EditarClientePantallaState extends State<EditarClientePantalla> {
                   color: Colors.red.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
-                ),
+                child: const Icon(Icons.delete_outline, color: Colors.red),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -159,30 +158,43 @@ class _EditarClientePantallaState extends State<EditarClientePantalla> {
       },
     );
 
-    if (confirmar == true) {
-      await FirebaseFirestore.instance
-          .collection('clientes')
-          .doc(widget.clienteId)
-          .delete();
+    if (confirmar != true) return;
 
-      if (!mounted) return;
+    final eliminado = await viewModel.eliminarCliente();
 
+    if (!mounted) return;
+
+    if (!eliminado) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cliente eliminado correctamente')),
+        SnackBar(
+          content: Text(
+            viewModel.mensajeError ?? 'No se pudo eliminar el cliente',
+          ),
+        ),
       );
-
-      Navigator.pop(context);
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cliente eliminado correctamente')),
+    );
+
+    Navigator.pop(context);
   }
 
-  @override
-  void dispose() {
-    nombreController.dispose();
-    telefonoController.dispose();
-    correoController.dispose();
-    empresaController.dispose();
-    direccionController.dispose();
-    super.dispose();
+  Future<void> seleccionarServicios() async {
+    final resultado = await Navigator.push<List<Map<String, String>>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SeleccionarServiciosPantalla(
+          seleccionInicial: viewModel.serviciosSeleccionados,
+        ),
+      ),
+    );
+
+    if (resultado != null && mounted) {
+      viewModel.actualizarServicios(resultado);
+    }
   }
 
   InputDecoration campoDecoracion({
@@ -194,10 +206,7 @@ class _EditarClientePantallaState extends State<EditarClientePantalla> {
       prefixIcon: Icon(icono, color: const Color(0xFF1565C0)),
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
@@ -208,10 +217,7 @@ class _EditarClientePantallaState extends State<EditarClientePantalla> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(
-          color: Color(0xFF1565C0),
-          width: 1.4,
-        ),
+        borderSide: const BorderSide(color: Color(0xFF1565C0), width: 1.4),
       ),
       labelStyle: GoogleFonts.poppins(
         color: Colors.grey.shade600,
@@ -220,22 +226,9 @@ class _EditarClientePantallaState extends State<EditarClientePantalla> {
     );
   }
 
-  Future<void> seleccionarServicios() async {
-    final resultado = await Navigator.push<List<Map<String, String>>>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SeleccionarServiciosPantalla(
-          seleccionInicial: serviciosSeleccionados,
-        ),
-      ),
-    );
-
-    if (resultado != null && mounted) {
-      setState(() => serviciosSeleccionados = resultado);
-    }
-  }
-
   Widget selectorServicios() {
+    final serviciosSeleccionados = viewModel.serviciosSeleccionados;
+
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: seleccionarServicios,
@@ -249,10 +242,7 @@ class _EditarClientePantallaState extends State<EditarClientePantalla> {
         ),
         child: Row(
           children: [
-            const Icon(
-              Icons.inventory_2_outlined,
-              color: Color(0xFF1565C0),
-            ),
+            const Icon(Icons.inventory_2_outlined, color: Color(0xFF1565C0)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -269,8 +259,8 @@ class _EditarClientePantallaState extends State<EditarClientePantalla> {
                     serviciosSeleccionados.isEmpty
                         ? 'Seleccionar uno o varios servicios'
                         : serviciosSeleccionados
-                            .map((servicio) => servicio['nombre'])
-                            .join(', '),
+                              .map((servicio) => servicio['nombre'])
+                              .join(', '),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
@@ -288,257 +278,270 @@ class _EditarClientePantallaState extends State<EditarClientePantalla> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final estadoCliente =
-        widget.cliente['estadoCliente']?.toString() ?? 'Cliente potencial';
+  Widget encabezadoCliente() {
+    final estadoCliente = viewModel.clienteOriginal.estadoCliente;
     final esCliente = estadoCliente == 'Cliente';
     final estadoColor = esCliente ? Colors.green : Colors.orange;
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        foregroundColor: const Color(0xFF1F2937),
-        title: Text(
-          'Editar Cliente',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Tooltip(
-              message: 'Eliminar cliente',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: eliminarCliente,
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.18),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.red,
-                    size: 23,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1565C0).withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Icon(
+              esCliente ? Icons.verified_user : Icons.person_add,
+              color: Colors.white,
+              size: 31,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  nombreController.text.trim().isEmpty
+                      ? 'Cliente'
+                      : nombreController.text.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
+                const SizedBox(height: 2),
+                Text(
+                  empresaController.text.trim().isEmpty
+                      ? 'Sin empresa'
+                      : empresaController.text.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white.withValues(alpha: 0.86),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    estadoCliente,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      color: estadoColor.shade700,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF1565C0),
-                    Color(0xFF29B6F6),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF1565C0).withValues(alpha: 0.22),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 58,
-                    height: 58,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Icon(
-                      esCliente ? Icons.verified_user : Icons.person_add,
-                      color: Colors.white,
-                      size: 31,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          nombreController.text.trim().isEmpty
-                              ? 'Cliente'
-                              : nombreController.text.trim(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          empresaController.text.trim().isEmpty
-                              ? 'Sin empresa'
-                              : empresaController.text.trim(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                            color: Colors.white.withValues(alpha: 0.86),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(
-                            estadoCliente,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                              color: estadoColor.shade700,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: viewModel,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            foregroundColor: const Color(0xFF1F2937),
+            title: Text(
+              'Editar Cliente',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 22),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.045),
-                    blurRadius: 14,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: nombreController,
-                    decoration: campoDecoracion(
-                      label: 'Nombre',
-                      icono: Icons.person,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: telefonoController,
-                    keyboardType: TextInputType.phone,
-                    decoration: campoDecoracion(
-                      label: 'Teléfono',
-                      icono: Icons.phone,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: correoController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: campoDecoracion(
-                      label: 'Correo',
-                      icono: Icons.email,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: empresaController,
-                    decoration: campoDecoracion(
-                      label: 'Empresa',
-                      icono: Icons.business,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: direccionController,
-                    maxLines: 2,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: campoDecoracion(
-                      label: 'Direcci\u00f3n',
-                      icono: Icons.location_on_outlined,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  selectorServicios(),
-                ],
-              ),
-            ),
-            const SizedBox(height: 22),
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1565C0),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                onPressed: cargando ? null : actualizarCliente,
-                child: cargando
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.4,
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Tooltip(
+                  message: 'Eliminar cliente',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: viewModel.eliminando ? null : eliminarCliente,
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.18),
                         ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.save_rounded, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Guardar cambios',
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
                       ),
+                      child: viewModel.eliminando
+                          ? const Padding(
+                              padding: EdgeInsets.all(11),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.red,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                              size: 23,
+                            ),
+                    ),
+                  ),
+                ),
               ),
+            ],
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+            child: Column(
+              children: [
+                encabezadoCliente(),
+                const SizedBox(height: 22),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.045),
+                        blurRadius: 14,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: nombreController,
+                        decoration: campoDecoracion(
+                          label: 'Nombre',
+                          icono: Icons.person,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: telefonoController,
+                        keyboardType: TextInputType.phone,
+                        decoration: campoDecoracion(
+                          label: 'Teléfono',
+                          icono: Icons.phone,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: correoController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: campoDecoracion(
+                          label: 'Correo',
+                          icono: Icons.email,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: empresaController,
+                        decoration: campoDecoracion(
+                          label: 'Empresa',
+                          icono: Icons.business,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: direccionController,
+                        maxLines: 2,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: campoDecoracion(
+                          label: 'Dirección',
+                          icono: Icons.location_on_outlined,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      selectorServicios(),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1565C0),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    onPressed: viewModel.cargando ? null : actualizarCliente,
+                    child: viewModel.cargando
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.4,
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.save_rounded, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Guardar cambios',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

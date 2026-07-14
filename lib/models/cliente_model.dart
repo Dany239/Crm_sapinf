@@ -68,6 +68,19 @@ class ClienteModel {
     };
   }
 
+  Map<String, dynamic> toUpdateMap() {
+    return {
+      'nombre': nombre,
+      'telefono': telefono,
+      'correo': correo,
+      'empresa': empresa,
+      'direccion': direccion,
+      'serviciosInteresIds': serviciosInteresIds,
+      'serviciosInteresNombres': serviciosInteresNombres,
+      'fechaActualizacion': FieldValue.serverTimestamp(),
+    };
+  }
+
   Map<String, dynamic> toPlainMap() {
     return {
       'nombre': nombre,

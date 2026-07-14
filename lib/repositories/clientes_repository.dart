@@ -8,6 +8,11 @@ class ClientesRepository {
   final CollectionReference<Map<String, dynamic>> _clientes = FirebaseFirestore
       .instance
       .collection('clientes');
+  final CollectionReference<Map<String, dynamic>> _ventas = FirebaseFirestore
+      .instance
+      .collection('ventas');
+  final CollectionReference<Map<String, dynamic>> _seguimientos =
+      FirebaseFirestore.instance.collection('seguimientos');
 
   Stream<List<ClienteModel>> escucharClientes() {
     return _clientes.snapshots().map((snapshot) {
@@ -61,5 +66,63 @@ class ClientesRepository {
     );
 
     return referencia;
+  }
+
+  Future<void> actualizarCliente({
+    required String clienteId,
+    required ClienteModel cliente,
+  }) {
+    return _clientes.doc(clienteId).update(cliente.toUpdateMap());
+  }
+
+  Future<void> eliminarCliente(String clienteId) {
+    return _clientes.doc(clienteId).delete();
+  }
+
+  Future<void> convertirEnCliente({
+    required String clienteId,
+    required ClienteModel cliente,
+    required SesionUsuario sesion,
+  }) async {
+    await _clientes.doc(clienteId).update({
+      'estadoCliente': 'Cliente',
+      'fechaConversionCliente': FieldValue.serverTimestamp(),
+    });
+
+    await NotificacionesServicio.crear(
+      titulo: 'Prospecto convertido en cliente',
+      descripcion: '${sesion.nombre} convirtió a ${cliente.nombre} en cliente.',
+      tipo: 'cliente_convertido',
+      icono: 'person_add',
+      color: 'green',
+      autor: sesion,
+      usuariosDestinatarios: [cliente.vendedorId ?? '', sesion.uid],
+      referenciaId: clienteId,
+      referenciaColeccion: 'clientes',
+    );
+  }
+
+  Stream<List<Map<String, dynamic>>> escucharVentasPorCliente(String nombre) {
+    return _ventas
+        .where('cliente', isEqualTo: nombre)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => {'id': doc.id, ...doc.data()})
+              .toList(),
+        );
+  }
+
+  Stream<List<Map<String, dynamic>>> escucharSeguimientosPorCliente(
+    String nombre,
+  ) {
+    return _seguimientos
+        .where('cliente', isEqualTo: nombre)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => {'id': doc.id, ...doc.data()})
+              .toList(),
+        );
   }
 }

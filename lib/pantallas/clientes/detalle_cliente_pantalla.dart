@@ -5,10 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../seguimientos/agregar_seguimiento_pantalla.dart';
 import '../ventas/agregar_venta_pantalla.dart';
-import '../../servicios/notificaciones_servicio.dart';
-import '../../servicios/sesion_usuario.dart';
+import '../../viewmodels/detalle_cliente_viewmodel.dart';
 
-class DetalleClientePantalla extends StatelessWidget {
+class DetalleClientePantalla extends StatefulWidget {
   final String clienteId;
   final Map<String, dynamic> cliente;
 
@@ -17,6 +16,31 @@ class DetalleClientePantalla extends StatelessWidget {
     required this.clienteId,
     required this.cliente,
   });
+
+  @override
+  State<DetalleClientePantalla> createState() => _DetalleClientePantallaState();
+}
+
+class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
+  late final DetalleClienteViewModel viewModel;
+
+  String get clienteId => widget.clienteId;
+  Map<String, dynamic> get cliente => widget.cliente;
+
+  @override
+  void initState() {
+    super.initState();
+    viewModel = DetalleClienteViewModel(
+      clienteId: widget.clienteId,
+      datosCliente: widget.cliente,
+    );
+  }
+
+  @override
+  void dispose() {
+    viewModel.dispose();
+    super.dispose();
+  }
 
   String formatearFecha(Timestamp? fecha) {
     if (fecha == null) return 'Sin fecha';
@@ -65,29 +89,19 @@ class DetalleClientePantalla extends StatelessWidget {
           CircleAvatar(
             radius: 26,
             backgroundColor: color.withValues(alpha: 0.15),
-            child: Icon(
-              icono,
-              color: color,
-              size: 30,
-            ),
+            child: Icon(icono, color: color, size: 30),
           ),
           const SizedBox(height: 10),
           Text(
             valor,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 6),
           Text(
             titulo,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
           ),
         ],
       ),
@@ -105,33 +119,20 @@ class DetalleClientePantalla extends StatelessWidget {
   }
 
   Future<void> convertirEnCliente(BuildContext context) async {
-    final sesion = await obtenerSesionUsuario();
-
-    await FirebaseFirestore.instance
-        .collection('clientes')
-        .doc(clienteId)
-        .update({
-      'estadoCliente': 'Cliente',
-      'fechaConversionCliente': FieldValue.serverTimestamp(),
-    });
-
-    await NotificacionesServicio.crear(
-      titulo: 'Prospecto convertido en cliente',
-      descripcion:
-          '${sesion.nombre} convirti\u00f3 a ${cliente['nombre'] ?? 'un prospecto'} en cliente.',
-      tipo: 'cliente_convertido',
-      icono: 'person_add',
-      color: 'green',
-      autor: sesion,
-      usuariosDestinatarios: [
-        cliente['vendedorId']?.toString() ?? '',
-        sesion.uid,
-      ],
-      referenciaId: clienteId,
-      referenciaColeccion: 'clientes',
-    );
+    final convertido = await viewModel.convertirEnCliente();
 
     if (!context.mounted) return;
+
+    if (!convertido) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            viewModel.mensajeError ?? 'No se pudo convertir el cliente',
+          ),
+        ),
+      );
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Cliente potencial convertido en cliente')),
@@ -207,9 +208,9 @@ class DetalleClientePantalla extends StatelessWidget {
     }
 
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No se pudo abrir WhatsApp')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
   }
 
   Future<void> abrirCorreo(BuildContext context, String correo) async {
@@ -220,10 +221,7 @@ class DetalleClientePantalla extends StatelessWidget {
       return;
     }
 
-    final uri = Uri(
-      scheme: 'mailto',
-      path: correo.trim(),
-    );
+    final uri = Uri(scheme: 'mailto', path: correo.trim());
 
     try {
       final abierto = await launchUrl(uri);
@@ -237,9 +235,9 @@ class DetalleClientePantalla extends StatelessWidget {
 
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No se pudo abrir el correo')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('No se pudo abrir el correo')));
   }
 
   void abrirNuevoSeguimiento(BuildContext context, String nombre) {
@@ -266,10 +264,7 @@ class DetalleClientePantalla extends StatelessWidget {
     );
   }
 
-  Future<void> eliminarCliente(
-    BuildContext context,
-    String nombre,
-  ) async {
+  Future<void> eliminarCliente(BuildContext context, String nombre) async {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -296,12 +291,21 @@ class DetalleClientePantalla extends StatelessWidget {
 
     if (confirmar != true) return;
 
-    await FirebaseFirestore.instance
-        .collection('clientes')
-        .doc(clienteId)
-        .delete();
+    final eliminado = await viewModel.eliminarCliente();
 
     if (!context.mounted) return;
+
+    if (!eliminado) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            viewModel.mensajeError ?? 'No se pudo eliminar el cliente',
+          ),
+        ),
+      );
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$nombre fue eliminado correctamente')),
     );
@@ -309,60 +313,25 @@ class DetalleClientePantalla extends StatelessWidget {
   }
 
   Widget timelineCliente(String nombre, {required bool incluirVentas}) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('ventas')
-          .where('cliente', isEqualTo: nombre)
-          .snapshots(),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: viewModel.ventasStream,
       builder: (context, ventasSnapshot) {
-        return StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('seguimientos')
-              .where('cliente', isEqualTo: nombre)
-              .snapshots(),
+        return StreamBuilder<List<Map<String, dynamic>>>(
+          stream: viewModel.seguimientosStream,
           builder: (context, seguimientosSnapshot) {
             if (!ventasSnapshot.hasData || !seguimientosSnapshot.hasData) {
               return const CircularProgressIndicator();
             }
 
-            final actividades = <Map<String, dynamic>>[];
-
-            for (final doc in incluirVentas
-                ? ventasSnapshot.data!.docs
-                : <QueryDocumentSnapshot>[]) {
-              final venta = doc.data() as Map<String, dynamic>;
-              final fecha = venta['fechaRegistro'];
-
-              actividades.add({
-                'tipo': 'venta',
-                'titulo': 'Venta registrada',
-                'detalle': venta['servicio'] ?? '',
-                'monto': double.tryParse(venta['monto'].toString()) ?? 0,
-                'estado': venta['estado'] ?? '',
-                'fecha': fecha is Timestamp ? fecha.toDate() : DateTime.now(),
-              });
-            }
-
-            for (final doc in seguimientosSnapshot.data!.docs) {
-              final seguimiento = doc.data() as Map<String, dynamic>;
-              final fecha = seguimiento['fechaRegistro'];
-
-              actividades.add({
-                'tipo': 'seguimiento',
-                'titulo': seguimiento['tipo'] ?? 'Seguimiento',
-                'detalle': seguimiento['comentario'] ?? '',
-                'estado': seguimiento['estado'] ?? '',
-                'fecha': fecha is Timestamp ? fecha.toDate() : DateTime.now(),
-              });
-            }
-
-            actividades.sort((a, b) => b['fecha'].compareTo(a['fecha']));
+            final actividades = viewModel.crearTimeline(
+              ventas: ventasSnapshot.data ?? [],
+              seguimientos: seguimientosSnapshot.data ?? [],
+              incluirVentas: incluirVentas,
+            );
 
             if (actividades.isEmpty) {
               return const Card(
-                child: ListTile(
-                  title: Text('No hay historial registrado'),
-                ),
+                child: ListTile(title: Text('No hay historial registrado')),
               );
             }
 
@@ -443,10 +412,7 @@ class DetalleClientePantalla extends StatelessWidget {
           children: [
             const Text(
               'Perfil comercial',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
             ),
             Text(
               estadoCliente,
@@ -462,10 +428,7 @@ class DetalleClientePantalla extends StatelessWidget {
           IconButton(
             tooltip: 'Eliminar',
             onPressed: () => eliminarCliente(context, nombre),
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              color: Colors.red,
-            ),
+            icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
           ),
           const SizedBox(width: 8),
         ],
@@ -505,10 +468,7 @@ class DetalleClientePantalla extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF1565C0),
-                    Color(0xFF29B6F6),
-                  ],
+                  colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -815,24 +775,15 @@ class DetalleClientePantalla extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   'Resumen del cliente',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(height: 12),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('ventas')
-                    .where('cliente', isEqualTo: nombre)
-                    .snapshots(),
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: viewModel.ventasStream,
                 builder: (context, ventasSnapshot) {
-                  return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('seguimientos')
-                        .where('cliente', isEqualTo: nombre)
-                        .snapshots(),
+                  return StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: viewModel.seguimientosStream,
                     builder: (context, seguimientosSnapshot) {
                       if (!ventasSnapshot.hasData ||
                           !seguimientosSnapshot.hasData) {
@@ -842,31 +793,10 @@ class DetalleClientePantalla extends StatelessWidget {
                         );
                       }
 
-                      final ventas = ventasSnapshot.data!.docs;
-                      final seguimientos = seguimientosSnapshot.data!.docs;
-
-                      double totalComprado = 0;
-                      Timestamp? ultimaVentaFecha;
-
-                      for (final doc in ventas) {
-                        final venta = doc.data() as Map<String, dynamic>;
-
-                        final monto =
-                            double.tryParse(venta['monto'].toString()) ?? 0;
-
-                        totalComprado += monto;
-
-                        if (venta['fechaRegistro'] != null) {
-                          final fecha = venta['fechaRegistro'] as Timestamp;
-
-                          if (ultimaVentaFecha == null ||
-                              fecha.toDate().isAfter(
-                                    ultimaVentaFecha.toDate(),
-                                  )) {
-                            ultimaVentaFecha = fecha;
-                          }
-                        }
-                      }
+                      final resumen = viewModel.calcularResumen(
+                        ventas: ventasSnapshot.data ?? [],
+                        seguimientos: seguimientosSnapshot.data ?? [],
+                      );
 
                       return GridView.count(
                         shrinkWrap: true,
@@ -878,25 +808,25 @@ class DetalleClientePantalla extends StatelessWidget {
                         children: [
                           tarjetaResumen(
                             titulo: 'Total comprado',
-                            valor: formatoLempiras(totalComprado),
+                            valor: formatoLempiras(resumen.totalComprado),
                             icono: Icons.payments,
                             color: Colors.green,
                           ),
                           tarjetaResumen(
                             titulo: 'Ventas',
-                            valor: '${ventas.length}',
+                            valor: '${resumen.cantidadVentas}',
                             icono: Icons.shopping_cart,
                             color: const Color(0xFF1565C0),
                           ),
                           tarjetaResumen(
                             titulo: 'Seguimientos',
-                            valor: '${seguimientos.length}',
+                            valor: '${resumen.cantidadSeguimientos}',
                             icono: Icons.phone_in_talk,
                             color: Colors.orange,
                           ),
                           tarjetaResumen(
                             titulo: 'Última venta',
-                            valor: formatearFecha(ultimaVentaFecha),
+                            valor: formatearFecha(resumen.ultimaVentaFecha),
                             icono: Icons.calendar_month,
                             color: Colors.purple,
                           ),
@@ -912,10 +842,7 @@ class DetalleClientePantalla extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: const Text(
                 'Historial',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(height: 12),
@@ -929,11 +856,8 @@ class DetalleClientePantalla extends StatelessWidget {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
               ),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('ventas')
-                    .where('cliente', isEqualTo: nombre)
-                    .snapshots(),
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: viewModel.ventasStream,
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
                     return const Padding(
@@ -942,19 +866,16 @@ class DetalleClientePantalla extends StatelessWidget {
                     );
                   }
 
-                  final ventas = snapshot.data!.docs;
+                  final ventas = snapshot.data ?? [];
 
                   if (ventas.isEmpty) {
                     return const Card(
-                      child: ListTile(
-                        title: Text('No hay ventas registradas'),
-                      ),
+                      child: ListTile(title: Text('No hay ventas registradas')),
                     );
                   }
 
                   return Column(
-                    children: ventas.map((doc) {
-                      final venta = doc.data() as Map<String, dynamic>;
+                    children: ventas.map((venta) {
                       final montoVenta =
                           double.tryParse(venta['monto'].toString()) ?? 0;
 
@@ -1014,11 +935,8 @@ class DetalleClientePantalla extends StatelessWidget {
                 ),
               ),
             ),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('seguimientos')
-                  .where('cliente', isEqualTo: nombre)
-                  .snapshots(),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: viewModel.seguimientosStream,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Padding(
@@ -1027,7 +945,7 @@ class DetalleClientePantalla extends StatelessWidget {
                   );
                 }
 
-                final seguimientos = snapshot.data!.docs;
+                final seguimientos = snapshot.data ?? [];
 
                 if (seguimientos.isEmpty) {
                   return const Card(
@@ -1038,8 +956,7 @@ class DetalleClientePantalla extends StatelessWidget {
                 }
 
                 return Column(
-                  children: seguimientos.map((doc) {
-                    final seguimiento = doc.data() as Map<String, dynamic>;
+                  children: seguimientos.map((seguimiento) {
                     IconData icono;
                     Color colorEstado;
 
@@ -1106,10 +1023,7 @@ class DetalleClientePantalla extends StatelessWidget {
                               child: CircleAvatar(
                                 radius: 24,
                                 backgroundColor: Colors.orange.shade100,
-                                child: Icon(
-                                  icono,
-                                  color: Colors.orange,
-                                ),
+                                child: Icon(icono, color: Colors.orange),
                               ),
                             ),
                             const SizedBox(width: 15),
@@ -1138,9 +1052,7 @@ class DetalleClientePantalla extends StatelessWidget {
                                   const SizedBox(height: 6),
                                   Text(
                                     seguimiento['comentario'] ?? '',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                    ),
+                                    style: const TextStyle(fontSize: 15),
                                   ),
                                   const SizedBox(height: 10),
                                   const Text(
