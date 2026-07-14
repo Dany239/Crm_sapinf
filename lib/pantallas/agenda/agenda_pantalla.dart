@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../seguimientos/agregar_seguimiento_pantalla.dart';
 import '../seguimientos/editar_seguimiento_pantalla.dart';
+import '../../models/seguimiento_model.dart';
 import '../../servicios/sesion_usuario.dart';
+import '../../viewmodels/agenda_viewmodel.dart';
 
 class AgendaPantalla extends StatefulWidget {
   const AgendaPantalla({super.key});
@@ -14,13 +15,19 @@ class AgendaPantalla extends StatefulWidget {
 }
 
 class _AgendaPantallaState extends State<AgendaPantalla> {
-  DateTime fechaSeleccionada = DateTime.now();
+  final AgendaViewModel viewModel = AgendaViewModel();
   late Future<SesionUsuario> sesionFuture;
 
   @override
   void initState() {
     super.initState();
     sesionFuture = obtenerSesionUsuario();
+  }
+
+  @override
+  void dispose() {
+    viewModel.dispose();
+    super.dispose();
   }
 
   final meses = const [
@@ -61,62 +68,24 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
     return const Color(0xFF1565C0);
   }
 
-  DateTime inicioSemana(DateTime fecha) {
-    return DateTime(fecha.year, fecha.month, fecha.day)
-        .subtract(Duration(days: fecha.weekday - 1));
-  }
-
   List<DateTime> diasDeSemana() {
-    final inicio = inicioSemana(fechaSeleccionada);
-    return List.generate(7, (index) => inicio.add(Duration(days: index)));
+    return viewModel.diasDeSemana();
   }
 
   bool mismoDia(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  DateTime? fechaSeguimiento(Map<String, dynamic> seguimiento) {
-    final fecha = seguimiento['fechaProxima'] ?? seguimiento['fechaRegistro'];
-
-    if (fecha is Timestamp) {
-      return fecha.toDate();
-    }
-
-    return null;
-  }
-
-  String horaSeguimiento(Map<String, dynamic> seguimiento, int index) {
-    final fecha = fechaSeguimiento(seguimiento);
-
-    if (fecha == null) {
-      return '--:--';
-    }
-
-    final hora = fecha.hour == 0
-        ? 12
-        : fecha.hour > 12
-            ? fecha.hour - 12
-            : fecha.hour;
-    final minutos = fecha.minute.toString().padLeft(2, '0');
-    final periodo = fecha.hour >= 12 ? 'PM' : 'AM';
-
-    return '${hora.toString().padLeft(2, '0')}:$minutos $periodo';
+    return viewModel.mismoDia(a, b);
   }
 
   void cambiarMes(int cantidad) {
     setState(() {
-      fechaSeleccionada = DateTime(
-        fechaSeleccionada.year,
-        fechaSeleccionada.month + cantidad,
-        fechaSeleccionada.day,
-      );
+      viewModel.cambiarMes(cantidad);
     });
   }
 
   Future<void> abrirCalendario() async {
     final fecha = await showDatePicker(
       context: context,
-      initialDate: fechaSeleccionada,
+      initialDate: viewModel.fechaSeleccionada,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
       helpText: 'Selecciona una fecha',
@@ -128,15 +97,12 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
 
     if (fecha != null && mounted) {
       setState(() {
-        fechaSeleccionada = fecha;
+        viewModel.seleccionarFecha(fecha);
       });
     }
   }
 
-  Widget botonCircular({
-    required IconData icono,
-    required VoidCallback onTap,
-  }) {
+  Widget botonCircular({required IconData icono, required VoidCallback onTap}) {
     return InkWell(
       borderRadius: BorderRadius.circular(15),
       onTap: onTap,
@@ -158,10 +124,7 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1565C0),
-            Color(0xFF29B6F6),
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -198,7 +161,7 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
                 child: Column(
                   children: [
                     Text(
-                      '${meses[fechaSeleccionada.month - 1]} ${fechaSeleccionada.year}',
+                      '${meses[viewModel.fechaSeleccionada.month - 1]} ${viewModel.fechaSeleccionada.year}',
                       style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 19,
@@ -237,7 +200,7 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
           const SizedBox(height: 18),
           Row(
             children: diasDeSemana().map((fecha) {
-              final seleccionado = mismoDia(fecha, fechaSeleccionada);
+              final seleccionado = mismoDia(fecha, viewModel.fechaSeleccionada);
 
               return Expanded(
                 child: Padding(
@@ -245,7 +208,7 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
                   child: GestureDetector(
                     onTap: () {
                       setState(() {
-                        fechaSeleccionada = fecha;
+                        viewModel.seleccionarFecha(fecha);
                       });
                     },
                     child: AnimatedContainer(
@@ -296,15 +259,11 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
     );
   }
 
-  Widget tarjetaActividad({
-    required String seguimientoId,
-    required Map<String, dynamic> seguimiento,
-    required int index,
-  }) {
-    final cliente = seguimiento['cliente'] ?? 'Sin cliente';
-    final tipo = seguimiento['tipo'] ?? 'Seguimiento';
-    final comentario = seguimiento['comentario'] ?? '';
-    final estado = seguimiento['estado'] ?? 'Pendiente';
+  Widget tarjetaActividad({required SeguimientoModel seguimiento}) {
+    final cliente = seguimiento.cliente ?? 'Sin cliente';
+    final tipo = seguimiento.tipo;
+    final comentario = seguimiento.comentario;
+    final estado = seguimiento.estado;
     final color = colorEstado(estado);
     final tipoColor = colorTipo(tipo);
 
@@ -315,8 +274,8 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
           context,
           MaterialPageRoute(
             builder: (context) => EditarSeguimientoPantalla(
-              seguimientoId: seguimientoId,
-              seguimiento: seguimiento,
+              seguimientoId: seguimiento.id ?? '',
+              seguimiento: seguimiento.toPlainMap(),
             ),
           ),
         );
@@ -341,7 +300,7 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
             SizedBox(
               width: 72,
               child: Text(
-                horaSeguimiento(seguimiento, index),
+                viewModel.horaSeguimiento(seguimiento),
                 style: GoogleFonts.poppins(
                   color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 13,
@@ -356,11 +315,7 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
                 color: tipoColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(15),
               ),
-              child: Icon(
-                iconoTipo(tipo),
-                size: 22,
-                color: tipoColor,
-              ),
+              child: Icon(iconoTipo(tipo), size: 22, color: tipoColor),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -399,10 +354,7 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.grey.shade400,
-            ),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
           ],
         ),
       ),
@@ -454,29 +406,10 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
     );
   }
 
-  List<QueryDocumentSnapshot> filtrarPorFecha(
-    List<QueryDocumentSnapshot> docs,
-    SesionUsuario sesion,
-  ) {
-    return docs.where((doc) {
-      final seguimiento = doc.data() as Map<String, dynamic>;
-
-      if (!sesion.esAdministrador && seguimiento['vendedorId'] != sesion.uid) {
-        return false;
-      }
-
-      final fecha = fechaSeguimiento(seguimiento);
-
-      if (fecha == null) return false;
-
-      return mismoDia(fecha, fechaSeleccionada);
-    }).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     final hoy = DateTime.now();
-    final esHoy = mismoDia(hoy, fechaSeleccionada);
+    final esHoy = mismoDia(hoy, viewModel.fechaSeleccionada);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -524,11 +457,8 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
           ),
           const SizedBox(height: 18),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('seguimientos')
-                  .orderBy('fechaRegistro', descending: false)
-                  .snapshots(),
+            child: StreamBuilder<List<SeguimientoModel>>(
+              stream: viewModel.seguimientosStream,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Center(child: Text('Error: ${snapshot.error}'));
@@ -546,8 +476,8 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
                     }
 
                     final sesion = sesionSnapshot.data!;
-                    final seguimientos = filtrarPorFecha(
-                      snapshot.data!.docs,
+                    final seguimientos = viewModel.filtrarPorFecha(
+                      snapshot.data ?? [],
                       sesion,
                     );
 
@@ -563,14 +493,14 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
                                   children: [
                                     Text(
                                       esHoy
-                                          ? 'Hoy - ${fechaSeleccionada.day} de ${meses[fechaSeleccionada.month - 1]}'
-                                          : '${fechaSeleccionada.day} de ${meses[fechaSeleccionada.month - 1]}',
+                                          ? 'Hoy - ${viewModel.fechaSeleccionada.day} de ${meses[viewModel.fechaSeleccionada.month - 1]}'
+                                          : '${viewModel.fechaSeleccionada.day} de ${meses[viewModel.fechaSeleccionada.month - 1]}',
                                       style: GoogleFonts.poppins(
                                         fontSize: 17,
                                         fontWeight: FontWeight.w800,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurface,
                                       ),
                                     ),
                                     Text(
@@ -591,18 +521,18 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
                           child: seguimientos.isEmpty
                               ? estadoVacio()
                               : ListView.builder(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(18, 0, 18, 110),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    18,
+                                    0,
+                                    18,
+                                    110,
+                                  ),
                                   itemCount: seguimientos.length,
                                   itemBuilder: (context, index) {
-                                    final doc = seguimientos[index];
-                                    final seguimiento =
-                                        doc.data() as Map<String, dynamic>;
+                                    final seguimiento = seguimientos[index];
 
                                     return tarjetaActividad(
-                                      seguimientoId: doc.id,
                                       seguimiento: seguimiento,
-                                      index: index,
                                     );
                                   },
                                 ),

@@ -45,7 +45,7 @@ class SeguimientoModel {
       tipo: data['tipo']?.toString() ?? 'Llamada',
       comentario: (data['comentario'] ?? data['resultado'] ?? '').toString(),
       proximaGestion: data['proximaGestion']?.toString() ?? '',
-      fechaProxima: _fechaDesdeDato(data['fechaProxima']),
+      fechaProxima: fechaDesdeDato(data['fechaProxima']),
       estado: data['estado']?.toString() ?? 'Realizado',
       evidenciaTipo: data['evidenciaTipo']?.toString() ?? 'Registro manual',
       vendedorId: data['vendedorId']?.toString(),
@@ -57,7 +57,7 @@ class SeguimientoModel {
     );
   }
 
-  static DateTime? _fechaDesdeDato(dynamic valor) {
+  static DateTime? fechaDesdeDato(dynamic valor) {
     if (valor is Timestamp) return valor.toDate();
     if (valor is DateTime) return valor;
     return null;
