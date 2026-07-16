@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'agregar_venta_pantalla.dart';
 import 'editar_venta_pantalla.dart';
 import '../../models/venta_model.dart';
-import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/ventas_viewmodel.dart';
 
 class VentasPantalla extends StatefulWidget {
@@ -18,13 +17,11 @@ class VentasPantalla extends StatefulWidget {
 
 class _VentasPantallaState extends State<VentasPantalla> {
   final buscarController = TextEditingController();
-  late Future<SesionUsuario> sesionFuture;
   late final VentasViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
-    sesionFuture = obtenerSesionUsuario();
     viewModel = VentasViewModel(estadoInicial: widget.estadoInicial);
   }
 
@@ -401,8 +398,8 @@ class _VentasPantallaState extends State<VentasPantalla> {
                   ),
                 ),
                 Expanded(
-                  child: FutureBuilder<SesionUsuario>(
-                    future: sesionFuture,
+                  child: FutureBuilder<VentasSesionViewData>(
+                    future: viewModel.sesionFuture,
                     builder: (context, sesionSnapshot) {
                       if (!sesionSnapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());

@@ -6,14 +6,34 @@ import '../models/venta_model.dart';
 import '../repositories/ventas_repository.dart';
 import '../servicios/sesion_usuario.dart';
 
+class VentasSesionViewData {
+  const VentasSesionViewData({
+    required this.uid,
+    required this.esAdministrador,
+  });
+
+  factory VentasSesionViewData.fromSesion(SesionUsuario sesion) {
+    return VentasSesionViewData(
+      uid: sesion.uid,
+      esAdministrador: sesion.esAdministrador,
+    );
+  }
+
+  final String uid;
+  final bool esAdministrador;
+}
+
 class VentasViewModel extends ChangeNotifier {
   final VentasRepository _repository;
   final String? estadoInicial;
 
   String textoBusqueda = '';
+  late final Future<VentasSesionViewData> sesionFuture;
 
   VentasViewModel({VentasRepository? repository, this.estadoInicial})
-    : _repository = repository ?? VentasRepository();
+    : _repository = repository ?? VentasRepository() {
+    sesionFuture = obtenerSesionUsuario().then(VentasSesionViewData.fromSesion);
+  }
 
   Stream<List<VentaModel>> get ventasStream => _repository.escucharVentas();
 
@@ -29,7 +49,7 @@ class VentasViewModel extends ChangeNotifier {
 
   List<VentaModel> filtrarVentas(
     List<VentaModel> ventas,
-    SesionUsuario sesion,
+    VentasSesionViewData sesion,
   ) {
     return ventas.where((venta) {
       if (!sesion.esAdministrador && venta.vendedorId != sesion.uid) {
