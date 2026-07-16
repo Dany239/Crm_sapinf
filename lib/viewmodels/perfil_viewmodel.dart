@@ -3,9 +3,26 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/usuario_model.dart';
 import '../repositories/usuarios_repository.dart';
+
+enum PerfilFotoOrigen { galeria, camara }
+
+class PerfilFotoResultado {
+  const PerfilFotoResultado._({required this.actualizada, this.error});
+
+  const PerfilFotoResultado.actualizada() : this._(actualizada: true);
+
+  const PerfilFotoResultado.cancelada() : this._(actualizada: false);
+
+  const PerfilFotoResultado.error(String mensaje)
+    : this._(actualizada: false, error: mensaje);
+
+  final bool actualizada;
+  final String? error;
+}
 
 class PerfilViewModel extends ChangeNotifier {
   PerfilViewModel({UsuariosRepository? repository})
@@ -71,6 +88,39 @@ class PerfilViewModel extends ChangeNotifier {
 
   Future<void> actualizarFotoDesdeBytes(Uint8List bytes) {
     return _repository.actualizarFotoActual(base64Encode(bytes));
+  }
+
+  Future<PerfilFotoResultado> seleccionarYActualizarFoto(
+    PerfilFotoOrigen origen,
+  ) async {
+    try {
+      final picker = ImagePicker();
+      final imagen = await picker.pickImage(
+        source: _imageSource(origen),
+        imageQuality: 55,
+        maxWidth: 500,
+      );
+
+      if (imagen == null) {
+        return const PerfilFotoResultado.cancelada();
+      }
+
+      final bytes = await imagen.readAsBytes();
+      await actualizarFotoDesdeBytes(bytes);
+
+      return const PerfilFotoResultado.actualizada();
+    } catch (e) {
+      return PerfilFotoResultado.error('No se pudo actualizar la foto: $e');
+    }
+  }
+
+  ImageSource _imageSource(PerfilFotoOrigen origen) {
+    switch (origen) {
+      case PerfilFotoOrigen.galeria:
+        return ImageSource.gallery;
+      case PerfilFotoOrigen.camara:
+        return ImageSource.camera;
+    }
   }
 
   ImageProvider? obtenerFotoPerfil(UsuarioModel? usuario) {

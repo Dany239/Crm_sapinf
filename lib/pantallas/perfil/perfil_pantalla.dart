@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../models/usuario_model.dart';
 import '../../viewmodels/perfil_viewmodel.dart';
@@ -136,39 +135,27 @@ class _PerfilPantallaState extends State<PerfilPantalla> {
 
   Future<void> seleccionarImagen(
     BuildContext context,
-    ImageSource source,
+    PerfilFotoOrigen origen,
   ) async {
-    final picker = ImagePicker();
-
-    final XFile? imagen = await picker.pickImage(
-      source: source,
-      imageQuality: 55,
-      maxWidth: 500,
-    );
-
-    if (imagen == null) return;
-
-    if (!context.mounted) return;
-
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Subiendo foto de perfil...')));
 
-    try {
-      final bytes = await imagen.readAsBytes();
-      await viewModel.actualizarFotoDesdeBytes(bytes);
+    final resultado = await viewModel.seleccionarYActualizarFoto(origen);
 
-      if (!context.mounted) return;
+    if (!context.mounted) return;
 
+    if (resultado.actualizada) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Foto actualizada correctamente')),
       );
-    } catch (e) {
-      if (!context.mounted) return;
+      return;
+    }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo actualizar la foto: $e')),
-      );
+    if (resultado.error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(resultado.error!)));
     }
   }
 
@@ -217,7 +204,10 @@ class _PerfilPantallaState extends State<PerfilPantalla> {
                       texto: 'Galer\u00eda',
                       onTap: () {
                         Navigator.pop(context);
-                        seleccionarImagen(parentContext, ImageSource.gallery);
+                        seleccionarImagen(
+                          parentContext,
+                          PerfilFotoOrigen.galeria,
+                        );
                       },
                     ),
                   ),
@@ -228,7 +218,10 @@ class _PerfilPantallaState extends State<PerfilPantalla> {
                       texto: 'C\u00e1mara',
                       onTap: () {
                         Navigator.pop(context);
-                        seleccionarImagen(parentContext, ImageSource.camera);
+                        seleccionarImagen(
+                          parentContext,
+                          PerfilFotoOrigen.camara,
+                        );
                       },
                     ),
                   ),
