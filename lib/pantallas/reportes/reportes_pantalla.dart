@@ -1,16 +1,11 @@
-import 'dart:typed_data';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 
 import '../ventas/editar_venta_pantalla.dart';
 import '../ventas/ventas_pantalla.dart';
 import '../clientes/clientes_pantalla.dart';
 import '../seguimientos/seguimientos_pantalla.dart';
 import '../../servicios/servicios_pantalla.dart';
-import '../../servicios/exportacion_reportes_servicio.dart';
 import '../../viewmodels/reportes_viewmodel.dart';
 
 class ReportesPantalla extends StatefulWidget {
@@ -22,74 +17,23 @@ class ReportesPantalla extends StatefulWidget {
 
 class _ReportesPantallaState extends State<ReportesPantalla> {
   final ReportesViewModel viewModel = ReportesViewModel();
-  DateTimeRange? rangoSeleccionado;
-  String? vendedorIdExportacion;
-  String vendedorNombreExportacion = 'Todos los vendedores';
-  bool exportando = false;
 
-  bool perteneceAlRango(
-    Map<String, dynamic> data,
-    DateTimeRange rango, {
-    String campoFecha = 'fechaRegistro',
-  }) {
-    return viewModel.perteneceAlRango(data, rango, campoFecha: campoFecha);
+  @override
+  void initState() {
+    super.initState();
+    viewModel.addListener(_actualizar);
   }
 
-  DateTimeRange rangoMesActual() {
-    return viewModel.rangoMesActual();
+  @override
+  void dispose() {
+    viewModel.removeListener(_actualizar);
+    viewModel.dispose();
+    super.dispose();
   }
 
-  DateTimeRange rangoAnterior(DateTimeRange rango) {
-    return viewModel.rangoAnterior(rango);
-  }
-
-  bool mostrarEnFiltro(Map<String, dynamic> data) {
-    return viewModel.mostrarEnFiltro(data, rangoSeleccionado);
-  }
-
-  double? calcularVariacion(num actual, num anterior) {
-    return viewModel.calcularVariacion(actual, anterior);
-  }
-
-  Stream<MetricaReporte> contarDocumentos(String coleccion, {String? estado}) {
-    return viewModel.contarDocumentos(
-      coleccion,
-      estado: estado,
-      rango: rangoSeleccionado,
-    );
-  }
-
-  Stream<MetricaReporte> calcularMontoTotal() {
-    return viewModel.calcularMontoTotal(rangoSeleccionado);
-  }
-
-  String formatoLempiras(dynamic valor) {
-    final monto = num.tryParse(valor?.toString() ?? '0') ?? 0;
-    return NumberFormat.currency(
-      locale: 'en_US',
-      symbol: 'L. ',
-      decimalDigits: 2,
-    ).format(monto);
-  }
-
-  String fechaCorta(dynamic valor) {
-    if (valor is! Timestamp) return 'Sin fecha';
-    return DateFormat('dd/MM/yyyy').format(valor.toDate());
-  }
-
-  String iniciales(String nombre) {
-    final partes = nombre
-        .trim()
-        .split(' ')
-        .where((parte) => parte.isNotEmpty)
-        .toList();
-    if (partes.isEmpty) return 'SV';
-    if (partes.length == 1) {
-      return partes.first
-          .substring(0, partes.first.length.clamp(0, 2))
-          .toUpperCase();
-    }
-    return '${partes.first[0]}${partes.last[0]}'.toUpperCase();
+  void _actualizar() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Color colorEstado(String estado) {
@@ -118,15 +62,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   String textoFiltroActual() {
-    final rango = rangoSeleccionado;
-    if (rango == null) return 'Todos los datos';
-    final formato = DateFormat('dd MMM yyyy', 'es');
-    if (rango.start.year == rango.end.year &&
-        rango.start.month == rango.end.month &&
-        rango.start.day == rango.end.day) {
-      return formato.format(rango.start);
-    }
-    return '${formato.format(rango.start)} - ${formato.format(rango.end)}';
+    return viewModel.textoFiltroActual();
   }
 
   Future<void> abrirFiltroFechas() async {
@@ -170,9 +106,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                     color: Color(0xFF1565C0),
                   ),
                   title: const Text('Elegir fechas'),
-                  subtitle: Text(
-                    '${DateFormat.MMMM('es').format(ahora)} ${ahora.year}',
-                  ),
+                  subtitle: Text(viewModel.textoMesAnio(ahora)),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.pop(context, 'personalizado'),
                 ),
@@ -186,33 +120,14 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     if (!mounted || opcion == null) return;
     final ahora = DateTime.now();
 
-    if (opcion == 'todos') {
-      setState(() => rangoSeleccionado = null);
-      return;
-    }
-    if (opcion == 'hoy') {
-      setState(() {
-        rangoSeleccionado = DateTimeRange(start: ahora, end: ahora);
-      });
-      return;
-    }
-    if (opcion == 'mes') {
-      setState(() => rangoSeleccionado = rangoMesActual());
-      return;
-    }
-    if (opcion == 'anio') {
-      setState(() {
-        rangoSeleccionado = DateTimeRange(
-          start: DateTime(ahora.year),
-          end: DateTime(ahora.year, 12, 31),
-        );
-      });
+    if (opcion != 'personalizado') {
+      viewModel.aplicarFiltro(opcion, ahora);
       return;
     }
 
     final rango = await showDateRangePicker(
       context: context,
-      initialDateRange: rangoSeleccionado,
+      initialDateRange: viewModel.rangoSeleccionado,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
       currentDate: ahora,
@@ -239,7 +154,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     );
 
     if (rango != null && mounted) {
-      setState(() => rangoSeleccionado = rango);
+      viewModel.seleccionarRango(rango);
     }
   }
 
@@ -317,68 +232,14 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     );
   }
 
-  Future<DatosReporteExportacion> _datosParaExportar() async {
-    return viewModel.datosParaExportar(
-      rango: rangoSeleccionado,
-      vendedorId: vendedorIdExportacion,
-      periodo: textoFiltroActual(),
-      vendedorNombre: vendedorNombreExportacion,
-    );
-  }
-
   Future<void> _exportarReporte(String tipo, {required String accion}) async {
-    if (exportando) return;
-    setState(() => exportando = true);
+    final mensajeError = await viewModel.exportarReporte(tipo, accion: accion);
 
-    try {
-      final datos = await _datosParaExportar();
-      final fechaArchivo = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
-      late final List<int> bytes;
-      late final String nombreArchivo;
-      late final String mimeType;
+    if (!mounted || mensajeError == null) return;
 
-      if (tipo == 'excel') {
-        bytes = ExportacionReportesServicio.generarExcel(datos);
-        nombreArchivo = 'reporte_comercial_$fechaArchivo.xlsx';
-        mimeType =
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      } else {
-        final ejecutivo = tipo == 'ejecutivo';
-        bytes = await ExportacionReportesServicio.generarPdf(
-          datos,
-          ejecutivo: ejecutivo,
-        );
-        nombreArchivo = ejecutivo
-            ? 'reporte_ejecutivo_$fechaArchivo.pdf'
-            : 'reporte_comercial_$fechaArchivo.pdf';
-        mimeType = 'application/pdf';
-      }
-
-      if (accion == 'abrir') {
-        await ExportacionReportesServicio.abrir(
-          bytes: bytes,
-          nombreArchivo: nombreArchivo,
-          mimeType: mimeType,
-        );
-      } else {
-        await ExportacionReportesServicio.compartir(
-          bytes: Uint8List.fromList(bytes),
-          nombreArchivo: nombreArchivo,
-          mimeType: mimeType,
-          periodo: datos.periodo,
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudo generar el reporte: $error'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => exportando = false);
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensajeError), backgroundColor: Colors.red),
+    );
   }
 
   Widget _centroExportacion() {
@@ -444,7 +305,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
               final vendedores = snapshot.data ?? [];
 
               return DropdownButtonFormField<String>(
-                initialValue: vendedorIdExportacion ?? 'todos',
+                initialValue: viewModel.vendedorIdExportacion ?? 'todos',
                 decoration: InputDecoration(
                   labelText: 'Exportar por vendedor',
                   prefixIcon: const Icon(Icons.badge_outlined),
@@ -468,21 +329,13 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                     );
                   }),
                 ],
-                onChanged: exportando
+                onChanged: viewModel.exportando
                     ? null
                     : (valor) {
-                        setState(() {
-                          if (valor == null || valor == 'todos') {
-                            vendedorIdExportacion = null;
-                            vendedorNombreExportacion = 'Todos los vendedores';
-                            return;
-                          }
-                          vendedorIdExportacion = valor;
-                          final vendedor = vendedores.firstWhere(
-                            (vendedor) => vendedor.id == valor,
-                          );
-                          vendedorNombreExportacion = vendedor.nombre;
-                        });
+                        viewModel.seleccionarVendedorExportacion(
+                          valor,
+                          vendedores,
+                        );
                       },
               );
             },
@@ -513,14 +366,14 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                   ),
                 ),
                 TextButton(
-                  onPressed: exportando ? null : abrirFiltroFechas,
+                  onPressed: viewModel.exportando ? null : abrirFiltroFechas,
                   child: const Text('Cambiar'),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 14),
-          if (exportando)
+          if (viewModel.exportando)
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(12),
@@ -681,7 +534,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      rangoSeleccionado == null
+                      viewModel.rangoSeleccionado == null
                           ? 'Resumen general de tu gesti\u00f3n comercial'
                           : textoFiltroActual(),
                       maxLines: 2,
@@ -729,7 +582,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         icono: Icons.people_rounded,
         color: const Color(0xFF1557D6),
         fondo: const Color(0xFFEAF0FF),
-        stream: contarDocumentos('clientes'),
+        stream: viewModel.contarDocumentos('clientes'),
         onTap: () => _abrirPantalla(const ClientesPantalla()),
       ),
       _DatoResumen(
@@ -737,7 +590,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         icono: Icons.attach_money_rounded,
         color: const Color(0xFF16A34A),
         fondo: const Color(0xFFE8F8EF),
-        stream: contarDocumentos('ventas'),
+        stream: viewModel.contarDocumentos('ventas'),
         onTap: () => _abrirPantalla(const VentasPantalla()),
       ),
       _DatoResumen(
@@ -745,7 +598,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         icono: Icons.phone_rounded,
         color: const Color(0xFFF28C18),
         fondo: const Color(0xFFFFF2E3),
-        stream: contarDocumentos('seguimientos'),
+        stream: viewModel.contarDocumentos('seguimientos'),
         onTap: () => _abrirPantalla(const SeguimientosPantalla()),
       ),
       _DatoResumen(
@@ -753,7 +606,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         icono: Icons.build_rounded,
         color: const Color(0xFF7138D8),
         fondo: const Color(0xFFF2EAFE),
-        stream: contarDocumentos('servicios'),
+        stream: viewModel.contarDocumentos('servicios'),
         onTap: () => _abrirPantalla(const ServiciosPantalla()),
       ),
       _DatoResumen(
@@ -761,7 +614,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         icono: Icons.check_circle_rounded,
         color: const Color(0xFF16A34A),
         fondo: const Color(0xFFE8F8EF),
-        stream: contarDocumentos('ventas', estado: 'Cerrada'),
+        stream: viewModel.contarDocumentos('ventas', estado: 'Cerrada'),
         onTap: () =>
             _abrirPantalla(const VentasPantalla(estadoInicial: 'Cerrada')),
       ),
@@ -770,7 +623,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
         icono: Icons.pending_actions_rounded,
         color: const Color(0xFFF28C18),
         fondo: const Color(0xFFFFF2E3),
-        stream: contarDocumentos('ventas', estado: 'Pendiente'),
+        stream: viewModel.contarDocumentos('ventas', estado: 'Pendiente'),
         invertirColor: true,
         onTap: () =>
             _abrirPantalla(const VentasPantalla(estadoInicial: 'Pendiente')),
@@ -914,7 +767,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
 
   Widget _montoTotal() {
     return StreamBuilder<MetricaReporte>(
-      stream: calcularMontoTotal(),
+      stream: viewModel.calcularMontoTotal(),
       builder: (context, snapshot) {
         final metrica = snapshot.data ?? const MetricaReporte(valor: 0);
         final porcentaje = metrica.variacion;
@@ -991,7 +844,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            formatoLempiras(metrica.valor),
+                            viewModel.formatoLempiras(metrica.valor),
                             style: GoogleFonts.poppins(
                               color: Colors.white,
                               fontSize: 27,
@@ -1022,7 +875,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
 
   Widget _ultimasVentas() {
     return StreamBuilder<List<ReporteVentaReciente>>(
-      stream: viewModel.ultimasVentas(rangoSeleccionado),
+      stream: viewModel.ultimasVentas(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
@@ -1094,7 +947,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                             radius: 27,
                             backgroundColor: color.withValues(alpha: 0.10),
                             child: Text(
-                              iniciales(nombre),
+                              viewModel.iniciales(nombre),
                               style: GoogleFonts.poppins(
                                 color: color,
                                 fontWeight: FontWeight.w600,
@@ -1129,7 +982,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                                   ),
                                 ),
                                 Text(
-                                  '${venta['vendedorNombre'] ?? 'Sin vendedor'} \u00b7 ${fechaCorta(venta['fechaRegistro'])}',
+                                  '${venta['vendedorNombre'] ?? 'Sin vendedor'} \u00b7 ${viewModel.fechaCorta(venta['fechaRegistro'])}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.poppins(
@@ -1150,7 +1003,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                                 FittedBox(
                                   fit: BoxFit.scaleDown,
                                   child: Text(
-                                    formatoLempiras(venta['monto']),
+                                    viewModel.formatoLempiras(venta['monto']),
                                     style: GoogleFonts.poppins(
                                       color: Theme.of(
                                         context,
@@ -1194,7 +1047,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
 
   Widget _rendimientoVendedores() {
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: viewModel.rendimientoVendedores(rangoSeleccionado),
+      stream: viewModel.rendimientoVendedores(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const SizedBox(

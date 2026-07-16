@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
+import 'package:intl/intl.dart';
 
 import '../servicios/exportacion_reportes_servicio.dart';
 
@@ -24,11 +26,15 @@ class ReporteVentaReciente {
   const ReporteVentaReciente({required this.id, required this.data});
 }
 
-class ReportesViewModel {
+class ReportesViewModel extends ChangeNotifier {
   ReportesViewModel({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
+  DateTimeRange? rangoSeleccionado;
+  String? vendedorIdExportacion;
+  String vendedorNombreExportacion = 'Todos los vendedores';
+  bool exportando = false;
 
   bool perteneceAlRango(
     Map<String, dynamic> data,
@@ -68,6 +74,105 @@ class ReportesViewModel {
     );
   }
 
+  void seleccionarRango(DateTimeRange? rango) {
+    rangoSeleccionado = rango;
+    notifyListeners();
+  }
+
+  void aplicarFiltro(String opcion, DateTime ahora) {
+    if (opcion == 'todos') {
+      seleccionarRango(null);
+      return;
+    }
+
+    if (opcion == 'hoy') {
+      seleccionarRango(DateTimeRange(start: ahora, end: ahora));
+      return;
+    }
+
+    if (opcion == 'mes') {
+      seleccionarRango(rangoMesActual());
+      return;
+    }
+
+    if (opcion == 'anio') {
+      seleccionarRango(
+        DateTimeRange(
+          start: DateTime(ahora.year),
+          end: DateTime(ahora.year, 12, 31),
+        ),
+      );
+    }
+  }
+
+  void seleccionarVendedorExportacion(
+    String? vendedorId,
+    List<ReporteVendedor> vendedores,
+  ) {
+    if (vendedorId == null || vendedorId == 'todos') {
+      vendedorIdExportacion = null;
+      vendedorNombreExportacion = 'Todos los vendedores';
+      notifyListeners();
+      return;
+    }
+
+    vendedorIdExportacion = vendedorId;
+    final vendedor = vendedores.firstWhere((vendedor) {
+      return vendedor.id == vendedorId;
+    });
+    vendedorNombreExportacion = vendedor.nombre;
+    notifyListeners();
+  }
+
+  String textoFiltroActual() {
+    final rango = rangoSeleccionado;
+    if (rango == null) return 'Todos los datos';
+
+    final formato = DateFormat('dd MMM yyyy', 'es');
+    if (rango.start.year == rango.end.year &&
+        rango.start.month == rango.end.month &&
+        rango.start.day == rango.end.day) {
+      return formato.format(rango.start);
+    }
+
+    return '${formato.format(rango.start)} - ${formato.format(rango.end)}';
+  }
+
+  String textoMesAnio(DateTime fecha) {
+    return '${DateFormat.MMMM('es').format(fecha)} ${fecha.year}';
+  }
+
+  String formatoLempiras(dynamic valor) {
+    final monto = num.tryParse(valor?.toString() ?? '0') ?? 0;
+    return NumberFormat.currency(
+      locale: 'en_US',
+      symbol: 'L. ',
+      decimalDigits: 2,
+    ).format(monto);
+  }
+
+  String fechaCorta(dynamic valor) {
+    if (valor is! Timestamp) return 'Sin fecha';
+    return DateFormat('dd/MM/yyyy').format(valor.toDate());
+  }
+
+  String iniciales(String nombre) {
+    final partes = nombre
+        .trim()
+        .split(' ')
+        .where((parte) => parte.isNotEmpty)
+        .toList();
+
+    if (partes.isEmpty) return 'SV';
+    if (partes.length == 1) {
+      return partes.first
+          .substring(0, partes.first.length.clamp(0, 2))
+          .toUpperCase();
+    }
+
+    return '${partes.first[0]}${partes.last[0]}'.toUpperCase();
+  }
+
   bool mostrarEnFiltro(Map<String, dynamic> data, DateTimeRange? rango) {
     return rango == null || perteneceAlRango(data, rango);
   }
@@ -77,12 +182,9 @@ class ReportesViewModel {
     return ((actual - anterior) / anterior) * 100;
   }
 
-  Stream<MetricaReporte> contarDocumentos(
-    String coleccion, {
-    String? estado,
-    DateTimeRange? rango,
-  }) {
+  Stream<MetricaReporte> contarDocumentos(String coleccion, {String? estado}) {
     return _firestore.collection(coleccion).snapshots().map((snapshot) {
+      final rango = rangoSeleccionado;
       final rangoActual = rango ?? rangoMesActual();
       final anteriorRango = rangoAnterior(rangoActual);
       var totalMostrado = 0;
@@ -105,8 +207,9 @@ class ReportesViewModel {
     });
   }
 
-  Stream<MetricaReporte> calcularMontoTotal(DateTimeRange? rango) {
+  Stream<MetricaReporte> calcularMontoTotal() {
     return _firestore.collection('ventas').snapshots().map((snapshot) {
+      final rango = rangoSeleccionado;
       final rangoActual = rango ?? rangoMesActual();
       final anteriorRango = rangoAnterior(rangoActual);
       var totalMostrado = 0.0;
@@ -144,11 +247,14 @@ class ReportesViewModel {
   }
 
   Future<DatosReporteExportacion> datosParaExportar({
-    required DateTimeRange? rango,
-    required String? vendedorId,
-    required String vendedorNombre,
-    required String periodo,
+    DateTimeRange? rango,
+    String? vendedorId,
+    String? vendedorNombre,
+    String? periodo,
   }) async {
+    final rangoFiltro = rango ?? rangoSeleccionado;
+    final vendedorFiltro = vendedorId ?? vendedorIdExportacion;
+
     final resultados = await Future.wait([
       _firestore.collection('ventas').get(),
       _firestore.collection('seguimientos').get(),
@@ -159,8 +265,10 @@ class ReportesViewModel {
       QuerySnapshot<Map<String, dynamic>> snapshot,
     ) {
       return snapshot.docs.map((doc) => doc.data()).where((data) {
-        if (rango != null && !perteneceAlRango(data, rango)) return false;
-        if (vendedorId != null && data['vendedorId'] != vendedorId) {
+        if (rangoFiltro != null && !perteneceAlRango(data, rangoFiltro)) {
+          return false;
+        }
+        if (vendedorFiltro != null && data['vendedorId'] != vendedorFiltro) {
           return false;
         }
         return true;
@@ -171,13 +279,68 @@ class ReportesViewModel {
       ventas: filtrar(resultados[0]),
       seguimientos: filtrar(resultados[1]),
       clientes: filtrar(resultados[2]),
-      periodo: periodo,
-      vendedor: vendedorNombre,
+      periodo: periodo ?? textoFiltroActual(),
+      vendedor: vendedorNombre ?? vendedorNombreExportacion,
     );
   }
 
-  Stream<List<ReporteVentaReciente>> ultimasVentas(DateTimeRange? rango) {
+  Future<String?> exportarReporte(String tipo, {required String accion}) async {
+    if (exportando) return null;
+
+    exportando = true;
+    notifyListeners();
+
+    try {
+      final datos = await datosParaExportar();
+      final fechaArchivo = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+      late final List<int> bytes;
+      late final String nombreArchivo;
+      late final String mimeType;
+
+      if (tipo == 'excel') {
+        bytes = ExportacionReportesServicio.generarExcel(datos);
+        nombreArchivo = 'reporte_comercial_$fechaArchivo.xlsx';
+        mimeType =
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      } else {
+        final ejecutivo = tipo == 'ejecutivo';
+        bytes = await ExportacionReportesServicio.generarPdf(
+          datos,
+          ejecutivo: ejecutivo,
+        );
+        nombreArchivo = ejecutivo
+            ? 'reporte_ejecutivo_$fechaArchivo.pdf'
+            : 'reporte_comercial_$fechaArchivo.pdf';
+        mimeType = 'application/pdf';
+      }
+
+      if (accion == 'abrir') {
+        await ExportacionReportesServicio.abrir(
+          bytes: bytes,
+          nombreArchivo: nombreArchivo,
+          mimeType: mimeType,
+        );
+      } else {
+        await ExportacionReportesServicio.compartir(
+          bytes: Uint8List.fromList(bytes),
+          nombreArchivo: nombreArchivo,
+          mimeType: mimeType,
+          periodo: datos.periodo,
+        );
+      }
+
+      return null;
+    } catch (error) {
+      return 'No se pudo generar el reporte: $error';
+    } finally {
+      exportando = false;
+      notifyListeners();
+    }
+  }
+
+  Stream<List<ReporteVentaReciente>> ultimasVentas() {
     return _firestore.collection('ventas').snapshots().map((snapshot) {
+      final rango = rangoSeleccionado;
       final ventas = snapshot.docs.where((doc) {
         return mostrarEnFiltro(doc.data(), rango);
       }).toList();
@@ -196,12 +359,11 @@ class ReportesViewModel {
     });
   }
 
-  Stream<List<Map<String, dynamic>>> rendimientoVendedores(
-    DateTimeRange? rango,
-  ) {
+  Stream<List<Map<String, dynamic>>> rendimientoVendedores() {
     return _firestore.collection('ventas').snapshots().asyncMap((
       ventasSnapshot,
     ) async {
+      final rango = rangoSeleccionado;
       final resultados = await Future.wait([
         _firestore.collection('seguimientos').get(),
         _firestore.collection('clientes').get(),
