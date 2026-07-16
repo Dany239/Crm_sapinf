@@ -1,19 +1,16 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/sapinf_colors.dart';
+import '../../viewmodels/splash_viewmodel.dart';
 import '../../widgets/sapinf_logo.dart';
 
 class SplashPantalla extends StatefulWidget {
   final Widget siguientePantalla;
 
-  const SplashPantalla({
-    super.key,
-    required this.siguientePantalla,
-  });
+  const SplashPantalla({super.key, required this.siguientePantalla});
 
   @override
   State<SplashPantalla> createState() => _SplashPantallaState();
@@ -25,10 +22,12 @@ class _SplashPantallaState extends State<SplashPantalla>
   late final AnimationController cargaController;
   late final Animation<double> entrada;
   late final Timer temporizador;
+  late final SplashViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
+    viewModel = SplashViewModel();
 
     animacionController = AnimationController(
       vsync: this,
@@ -50,15 +49,15 @@ class _SplashPantallaState extends State<SplashPantalla>
   }
 
   Future<void> abrirApp() async {
-    await FirebaseAuth.instance.signOut();
+    await viewModel.cerrarSesionInicial();
 
     if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => widget.siguientePantalla,
+        pageBuilder: (_, _, _) => widget.siguientePantalla,
         transitionDuration: const Duration(milliseconds: 450),
-        transitionsBuilder: (_, animation, __, child) {
+        transitionsBuilder: (_, animation, _, child) {
           return FadeTransition(opacity: animation, child: child);
         },
       ),
@@ -68,6 +67,7 @@ class _SplashPantallaState extends State<SplashPantalla>
   @override
   void dispose() {
     temporizador.cancel();
+    viewModel.dispose();
     animacionController.dispose();
     cargaController.dispose();
     super.dispose();
@@ -181,10 +181,7 @@ class _SplashFondo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _SplashFondoPainter(),
-      child: Container(),
-    );
+    return CustomPaint(painter: _SplashFondoPainter(), child: Container());
   }
 }
 
@@ -199,20 +196,24 @@ class _SplashFondoPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, fondo);
 
     final topPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          celeste.withValues(alpha: 0.82),
-          celeste.withValues(alpha: 0.22),
-          Colors.transparent,
-        ],
-      ).createShader(
-        Rect.fromCircle(
-          center: Offset(-size.width * 0.02, -size.height * 0.02),
-          radius: size.width * 0.48,
-        ),
-      );
-    canvas.drawCircle(Offset(-size.width * 0.02, -size.height * 0.02),
-        size.width * 0.48, topPaint);
+      ..shader =
+          RadialGradient(
+            colors: [
+              celeste.withValues(alpha: 0.82),
+              celeste.withValues(alpha: 0.22),
+              Colors.transparent,
+            ],
+          ).createShader(
+            Rect.fromCircle(
+              center: Offset(-size.width * 0.02, -size.height * 0.02),
+              radius: size.width * 0.48,
+            ),
+          );
+    canvas.drawCircle(
+      Offset(-size.width * 0.02, -size.height * 0.02),
+      size.width * 0.48,
+      topPaint,
+    );
 
     for (var i = 0; i < 8; i++) {
       final paint = Paint()
@@ -228,8 +229,14 @@ class _SplashFondoPainter extends CustomPainter {
 
     final wave1 = Path()
       ..moveTo(0, size.height * 0.66)
-      ..cubicTo(size.width * 0.24, size.height * 0.86, size.width * 0.50,
-          size.height * 0.76, size.width, size.height * 0.58)
+      ..cubicTo(
+        size.width * 0.24,
+        size.height * 0.86,
+        size.width * 0.50,
+        size.height * 0.76,
+        size.width,
+        size.height * 0.58,
+      )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
@@ -249,8 +256,14 @@ class _SplashFondoPainter extends CustomPainter {
 
     final wave2 = Path()
       ..moveTo(0, size.height * 0.77)
-      ..cubicTo(size.width * 0.28, size.height * 0.86, size.width * 0.48,
-          size.height * 0.91, size.width, size.height * 0.65)
+      ..cubicTo(
+        size.width * 0.28,
+        size.height * 0.86,
+        size.width * 0.48,
+        size.height * 0.91,
+        size.width,
+        size.height * 0.65,
+      )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
@@ -266,8 +279,14 @@ class _SplashFondoPainter extends CustomPainter {
 
     final wave3 = Path()
       ..moveTo(0, size.height * 0.84)
-      ..cubicTo(size.width * 0.34, size.height * 0.94, size.width * 0.58,
-          size.height * 0.86, size.width, size.height * 0.77)
+      ..cubicTo(
+        size.width * 0.34,
+        size.height * 0.94,
+        size.width * 0.58,
+        size.height * 0.86,
+        size.width,
+        size.height * 0.77,
+      )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
@@ -417,10 +436,7 @@ class _AccionSplash extends StatelessWidget {
   final IconData icono;
   final String texto;
 
-  const _AccionSplash({
-    required this.icono,
-    required this.texto,
-  });
+  const _AccionSplash({required this.icono, required this.texto});
 
   @override
   Widget build(BuildContext context) {
