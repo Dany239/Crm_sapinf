@@ -11,6 +11,7 @@ class EditarVentaViewModel extends ChangeNotifier {
   final ClientesRepository _clientesRepository;
   final String ventaId;
   final VentaModel ventaOriginal;
+  late final Future<SesionUsuario> _sesionFuture;
 
   EditarVentaViewModel({
     required this.ventaId,
@@ -20,6 +21,7 @@ class EditarVentaViewModel extends ChangeNotifier {
   }) : _ventasRepository = ventasRepository ?? VentasRepository(),
        _clientesRepository = clientesRepository ?? ClientesRepository(),
        ventaOriginal = VentaModel.fromMap(venta, id: ventaId) {
+    _sesionFuture = obtenerSesionUsuario();
     clienteIdSeleccionado = ventaOriginal.clienteId;
     clienteNombreSeleccionado = ventaOriginal.cliente;
     servicioSeleccionado = ventaOriginal.servicio;
@@ -34,8 +36,9 @@ class EditarVentaViewModel extends ChangeNotifier {
   bool eliminando = false;
   String? mensajeError;
 
-  Stream<List<ClienteModel>> escucharClientesDisponibles(SesionUsuario sesion) {
-    return _clientesRepository.escucharClientesDisponibles(sesion);
+  Stream<List<ClienteModel>> get clientesDisponiblesStream async* {
+    final sesion = await _sesionFuture;
+    yield* _clientesRepository.escucharClientesDisponibles(sesion);
   }
 
   void seleccionarCliente({
@@ -73,7 +76,7 @@ class EditarVentaViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final sesion = await obtenerSesionUsuario();
+      final sesion = await _sesionFuture;
       final venta = VentaModel(
         clienteId: clienteIdSeleccionado,
         cliente: clienteNombreSeleccionado,
