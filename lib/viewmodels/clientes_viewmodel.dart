@@ -6,6 +6,23 @@ import '../models/cliente_model.dart';
 import '../repositories/clientes_repository.dart';
 import '../servicios/sesion_usuario.dart';
 
+class ClientesSesionViewData {
+  const ClientesSesionViewData({
+    required this.uid,
+    required this.esAdministrador,
+  });
+
+  factory ClientesSesionViewData.fromSesion(SesionUsuario sesion) {
+    return ClientesSesionViewData(
+      uid: sesion.uid,
+      esAdministrador: sesion.esAdministrador,
+    );
+  }
+
+  final String uid;
+  final bool esAdministrador;
+}
+
 class ClientesViewModel extends ChangeNotifier {
   final ClientesRepository _clientesRepository;
 
@@ -13,10 +30,15 @@ class ClientesViewModel extends ChangeNotifier {
     ClientesRepository? clientesRepository,
     required bool mostrarClientesInicial,
   }) : _clientesRepository = clientesRepository ?? ClientesRepository(),
-       mostrarClientes = mostrarClientesInicial;
+       mostrarClientes = mostrarClientesInicial {
+    sesionFuture = obtenerSesionUsuario().then(
+      ClientesSesionViewData.fromSesion,
+    );
+  }
 
   bool mostrarClientes;
   String textoBusqueda = '';
+  late final Future<ClientesSesionViewData> sesionFuture;
 
   Stream<List<ClienteModel>> get clientesStream =>
       _clientesRepository.escucharClientes();
@@ -38,7 +60,7 @@ class ClientesViewModel extends ChangeNotifier {
 
   List<ClienteModel> filtrarClientes(
     List<ClienteModel> clientes,
-    SesionUsuario sesion,
+    ClientesSesionViewData sesion,
   ) {
     return clientes.where((cliente) {
       if (!sesion.esAdministrador && cliente.vendedorId != sesion.uid) {

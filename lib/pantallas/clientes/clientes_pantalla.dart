@@ -5,7 +5,6 @@ import 'agregar_cliente_pantalla.dart';
 import 'detalle_cliente_pantalla.dart';
 import 'editar_cliente_pantalla.dart';
 import '../../models/cliente_model.dart';
-import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/clientes_viewmodel.dart';
 
 class ClientesPantalla extends StatefulWidget {
@@ -19,7 +18,6 @@ class ClientesPantalla extends StatefulWidget {
 
 class _ClientesPantallaState extends State<ClientesPantalla> {
   final buscarController = TextEditingController();
-  late Future<SesionUsuario> sesionFuture;
   late final ClientesViewModel viewModel;
 
   @override
@@ -28,7 +26,6 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
     viewModel = ClientesViewModel(
       mostrarClientesInicial: widget.mostrarClientes,
     );
-    sesionFuture = obtenerSesionUsuario();
   }
 
   @override
@@ -490,8 +487,8 @@ class _ClientesPantallaState extends State<ClientesPantalla> {
                   ),
                 ),
                 Expanded(
-                  child: FutureBuilder<SesionUsuario>(
-                    future: sesionFuture,
+                  child: FutureBuilder<ClientesSesionViewData>(
+                    future: viewModel.sesionFuture,
                     builder: (context, sesionSnapshot) {
                       if (!sesionSnapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
