@@ -31,6 +31,45 @@ class UsuariosRepository {
 
   String? get usuarioActualId => _auth.currentUser?.uid;
 
+  String? get usuarioActualCorreo => _auth.currentUser?.email;
+
+  Future<void> cerrarSesion() {
+    return _auth.signOut();
+  }
+
+  Future<void> cambiarPassword({
+    required String passwordActual,
+    required String passwordNueva,
+  }) async {
+    final usuario = _auth.currentUser;
+    final correo = usuario?.email;
+
+    if (usuario == null || correo == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'No hay usuario activo',
+      );
+    }
+
+    final credencial = EmailAuthProvider.credential(
+      email: correo,
+      password: passwordActual,
+    );
+
+    await usuario.reauthenticateWithCredential(credencial);
+    await usuario.updatePassword(passwordNueva);
+  }
+
+  Future<void> actualizarFotoActual(String fotoBase64) {
+    final uid = usuarioActualId;
+    if (uid == null) return Future.value();
+
+    return _usuarios.doc(uid).set({
+      'fotoBase64': fotoBase64,
+      'fechaActualizacionFoto': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   Future<void> registrarActividadActual() {
     final uid = usuarioActualId;
     if (uid == null) return Future.value();

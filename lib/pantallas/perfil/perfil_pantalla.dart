@@ -1,23 +1,30 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 
-class PerfilPantalla extends StatelessWidget {
+import '../../models/usuario_model.dart';
+import '../../viewmodels/perfil_viewmodel.dart';
+
+class PerfilPantalla extends StatefulWidget {
   const PerfilPantalla({super.key});
 
+  @override
+  State<PerfilPantalla> createState() => _PerfilPantallaState();
+}
+
+class _PerfilPantallaState extends State<PerfilPantalla> {
+  final PerfilViewModel viewModel = PerfilViewModel();
+
+  @override
+  void dispose() {
+    viewModel.dispose();
+    super.dispose();
+  }
+
   Future<void> cerrarSesion(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
+    await viewModel.cerrarSesion();
   }
 
   Future<void> enviarCambioPassword(BuildContext context) async {
-    final usuario = FirebaseAuth.instance.currentUser;
-    final correo = usuario?.email;
-
-    if (correo == null) return;
-
     final passwordActualController = TextEditingController();
     final passwordNuevaController = TextEditingController();
     final passwordConfirmarController = TextEditingController();
@@ -93,64 +100,37 @@ class PerfilPantalla extends StatelessWidget {
     final passwordNueva = datos['nueva'] ?? '';
     final passwordConfirmar = datos['confirmar'] ?? '';
 
-    if (passwordActual.isEmpty ||
-        passwordNueva.isEmpty ||
-        passwordConfirmar.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Completa todos los campos')),
-      );
+    final error = viewModel.validarCambioPassword(
+      passwordActual: passwordActual,
+      passwordNueva: passwordNueva,
+      passwordConfirmar: passwordConfirmar,
+    );
+
+    if (error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
 
-    if (passwordNueva.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('La contrase\u00f1a debe tener m\u00ednimo 6 caracteres'),
-        ),
-      );
-      return;
-    }
-
-    if (passwordNueva != passwordConfirmar) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Las contrase\u00f1as no coinciden')),
-      );
-      return;
-    }
-
-    try {
-      final credencial = EmailAuthProvider.credential(
-        email: correo,
-        password: passwordActual,
-      );
-
-      await usuario!.reauthenticateWithCredential(credencial);
-      await usuario.updatePassword(passwordNueva);
-    } on FirebaseAuthException catch (e) {
-      if (!context.mounted) return;
-
-      var mensaje = 'No se pudo cambiar la contrase\u00f1a';
-
-      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        mensaje = 'La contrase\u00f1a actual no es correcta';
-      } else if (e.code == 'weak-password') {
-        mensaje = 'La nueva contrase\u00f1a es muy d\u00e9bil';
-      } else if (e.code == 'requires-recent-login') {
-        mensaje = 'Vuelve a iniciar sesi\u00f3n e intenta de nuevo';
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje)),
-      );
-      return;
-    }
+    final mensajeError = await viewModel.cambiarPassword(
+      passwordActual: passwordActual,
+      passwordNueva: passwordNueva,
+    );
 
     if (!context.mounted) return;
 
+    if (mensajeError != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(mensajeError)));
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-          content: Text('Contrase\u00f1a actualizada correctamente')),
+        content: Text('Contrase\u00f1a actualizada correctamente'),
+      ),
     );
   }
 
@@ -168,35 +148,20 @@ class PerfilPantalla extends StatelessWidget {
 
     if (imagen == null) return;
 
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Subiendo foto de perfil...')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Subiendo foto de perfil...')));
 
     try {
       final bytes = await imagen.readAsBytes();
-      final fotoBase64 = base64Encode(bytes);
-
-      await FirebaseFirestore.instance.collection('usuarios').doc(uid).set({
-        'fotoBase64': fotoBase64,
-        'fechaActualizacionFoto': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await viewModel.actualizarFotoDesdeBytes(bytes);
 
       if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Foto actualizada correctamente')),
-      );
-    } on FirebaseException catch (e) {
-      if (!context.mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudo actualizar la foto: ${e.code}'),
-        ),
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -207,20 +172,8 @@ class PerfilPantalla extends StatelessWidget {
     }
   }
 
-  ImageProvider? obtenerFotoPerfil(Map<String, dynamic>? data) {
-    final fotoBase64 = data?['fotoBase64']?.toString();
-
-    if (fotoBase64 != null && fotoBase64.isNotEmpty) {
-      return MemoryImage(base64Decode(fotoBase64));
-    }
-
-    final fotoUrl = data?['foto']?.toString();
-
-    if (fotoUrl != null && fotoUrl.isNotEmpty) {
-      return NetworkImage(fotoUrl);
-    }
-
-    return null;
+  ImageProvider? obtenerFotoPerfil(UsuarioModel? usuario) {
+    return viewModel.obtenerFotoPerfil(usuario);
   }
 
   void mostrarOpcionesFoto(BuildContext context) {
@@ -253,10 +206,7 @@ class PerfilPantalla extends StatelessWidget {
               const SizedBox(height: 18),
               const Text(
                 'Foto de perfil',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               Row(
@@ -318,10 +268,7 @@ class PerfilPantalla extends StatelessWidget {
               child: Icon(icono, color: const Color(0xFF1565C0)),
             ),
             const SizedBox(height: 8),
-            Text(
-              texto,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+            Text(texto, style: const TextStyle(fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -361,10 +308,7 @@ class PerfilPantalla extends StatelessWidget {
           leading: Icon(icono, color: colorEfectivo),
           title: Text(
             texto,
-            style: TextStyle(
-              color: colorEfectivo,
-              fontWeight: FontWeight.w500,
-            ),
+            style: TextStyle(color: colorEfectivo, fontWeight: FontWeight.w500),
           ),
           trailing: const Icon(Icons.chevron_right),
           onTap: onTap,
@@ -375,26 +319,19 @@ class PerfilPantalla extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final usuario = FirebaseAuth.instance.currentUser;
-    final uid = usuario?.uid;
-
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: uid == null
+      body: !viewModel.hayUsuarioActivo
           ? const Center(child: Text('No hay usuario activo'))
-          : StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('usuarios')
-                  .doc(uid)
-                  .snapshots(),
+          : StreamBuilder<UsuarioModel?>(
+              stream: viewModel.usuarioStream,
               builder: (context, snapshot) {
-                final data = snapshot.data?.data() as Map<String, dynamic>?;
+                final usuario = snapshot.data;
 
-                final nombre = data?['nombre'] ?? 'Usuario';
-                final rol = data?['rol'] ?? 'Sin rol';
-                final rolFormateado = rol[0].toUpperCase() + rol.substring(1);
-                final correo = usuario?.email ?? 'Sin correo';
-                final fotoPerfil = obtenerFotoPerfil(data);
+                final nombre = usuario?.nombre ?? 'Usuario';
+                final rolFormateado = viewModel.rolFormateado(usuario);
+                final correo = viewModel.correoActual;
+                final fotoPerfil = obtenerFotoPerfil(usuario);
 
                 return SingleChildScrollView(
                   child: Column(
@@ -425,8 +362,10 @@ class PerfilPantalla extends StatelessWidget {
                         child: Row(
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.arrow_back,
-                                  color: Colors.white),
+                              icon: const Icon(
+                                Icons.arrow_back,
+                                color: Colors.white,
+                              ),
                               onPressed: () => Navigator.pop(context),
                             ),
                             const Expanded(
@@ -458,7 +397,9 @@ class PerfilPantalla extends StatelessWidget {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.10),
+                                        color: Colors.black.withValues(
+                                          alpha: 0.10,
+                                        ),
                                         blurRadius: 18,
                                         offset: const Offset(0, 8),
                                       ),
@@ -495,8 +436,8 @@ class PerfilPantalla extends StatelessWidget {
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                              0.16,
+                                            color: Colors.black.withValues(
+                                              alpha: 0.16,
                                             ),
                                             blurRadius: 10,
                                             offset: const Offset(0, 4),
@@ -515,15 +456,16 @@ class PerfilPantalla extends StatelessWidget {
                             ),
                             const SizedBox(height: 12),
                             Container(
-                              margin:
-                                  const EdgeInsets.symmetric(horizontal: 20),
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.surface,
                                 borderRadius: BorderRadius.circular(22),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.08),
+                                    color: Colors.black.withValues(alpha: 0.08),
                                     blurRadius: 12,
                                     offset: const Offset(0, 5),
                                   ),

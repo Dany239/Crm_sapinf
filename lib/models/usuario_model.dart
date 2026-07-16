@@ -10,6 +10,7 @@ class UsuarioModel {
   final dynamic fechaActualizacion;
   final dynamic ultimaActividad;
   final String? foto;
+  final String? fotoBase64;
 
   const UsuarioModel({
     this.id,
@@ -21,6 +22,7 @@ class UsuarioModel {
     this.fechaActualizacion,
     this.ultimaActividad,
     this.foto,
+    this.fotoBase64,
   });
 
   factory UsuarioModel.fromMap(Map<String, dynamic> data, {String? id}) {
@@ -37,6 +39,7 @@ class UsuarioModel {
       fechaActualizacion: data['fechaActualizacion'],
       ultimaActividad: data['ultimaActividad'],
       foto: data['foto']?.toString(),
+      fotoBase64: data['fotoBase64']?.toString(),
     );
   }
 
@@ -70,6 +73,7 @@ class UsuarioModel {
       'fechaActualizacion': fechaActualizacion,
       'ultimaActividad': ultimaActividad,
       'foto': foto,
+      'fotoBase64': fotoBase64,
     };
   }
 }
