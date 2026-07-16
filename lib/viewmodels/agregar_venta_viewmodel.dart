@@ -9,6 +9,7 @@ import '../servicios/sesion_usuario.dart';
 class AgregarVentaViewModel extends ChangeNotifier {
   final VentasRepository _ventasRepository;
   final ClientesRepository _clientesRepository;
+  late final Future<SesionUsuario> _sesionFuture;
 
   AgregarVentaViewModel({
     VentasRepository? ventasRepository,
@@ -18,7 +19,9 @@ class AgregarVentaViewModel extends ChangeNotifier {
   }) : _ventasRepository = ventasRepository ?? VentasRepository(),
        _clientesRepository = clientesRepository ?? ClientesRepository(),
        clienteIdSeleccionado = clienteIdInicial,
-       clienteNombreSeleccionado = clienteNombreInicial;
+       clienteNombreSeleccionado = clienteNombreInicial {
+    _sesionFuture = obtenerSesionUsuario();
+  }
 
   String? clienteIdSeleccionado;
   String? clienteNombreSeleccionado;
@@ -27,8 +30,9 @@ class AgregarVentaViewModel extends ChangeNotifier {
   bool cargando = false;
   String? mensajeError;
 
-  Stream<List<ClienteModel>> escucharClientesDisponibles(SesionUsuario sesion) {
-    return _clientesRepository.escucharClientesDisponibles(sesion);
+  Stream<List<ClienteModel>> get clientesDisponiblesStream async* {
+    final sesion = await _sesionFuture;
+    yield* _clientesRepository.escucharClientesDisponibles(sesion);
   }
 
   void seleccionarCliente({
@@ -66,7 +70,7 @@ class AgregarVentaViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final sesion = await obtenerSesionUsuario();
+      final sesion = await _sesionFuture;
       final venta = VentaModel(
         clienteId: clienteIdSeleccionado,
         cliente: clienteNombreSeleccionado,
