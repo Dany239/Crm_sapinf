@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 import 'dart:convert';
 
 import '../seguimientos/seguimientos_pantalla.dart';
@@ -20,6 +19,7 @@ import '../../widgets/kpi_card.dart';
 import '../../widgets/dashboard_header.dart';
 import '../../servicios/notificaciones_servicio.dart';
 import '../../servicios/sesion_usuario.dart';
+import '../../viewmodels/inicio_viewmodel.dart';
 
 class InicioPantalla extends StatefulWidget {
   const InicioPantalla({super.key});
@@ -30,6 +30,7 @@ class InicioPantalla extends StatefulWidget {
 
 class _InicioPantallaState extends State<InicioPantalla> {
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
+  final InicioViewModel viewModel = InicioViewModel();
   String rol = '';
   bool accesoAdministrador = false;
 
@@ -64,17 +65,14 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   Widget soloAdministrador(Widget child) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = viewModel.usuarioActualId;
 
     if (uid == null) return const SizedBox.shrink();
 
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(uid)
-          .snapshots(),
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: viewModel.usuarioActualDataStream(),
       builder: (context, snapshot) {
-        final data = snapshot.data?.data();
+        final data = snapshot.data;
 
         if (!tieneAccesoAdministradorDesdeData(data)) {
           return const SizedBox.shrink();
@@ -88,7 +86,23 @@ class _InicioPantallaState extends State<InicioPantalla> {
   @override
   void initState() {
     super.initState();
-    cargarRol();
+    viewModel.addListener(_actualizarDesdeViewModel);
+    viewModel.cargarRol();
+  }
+
+  @override
+  void dispose() {
+    viewModel.removeListener(_actualizarDesdeViewModel);
+    viewModel.dispose();
+    super.dispose();
+  }
+
+  void _actualizarDesdeViewModel() {
+    if (!mounted) return;
+    setState(() {
+      rol = viewModel.rol;
+      accesoAdministrador = viewModel.accesoAdministrador;
+    });
   }
 
   Future<void> cargarRol() async {
@@ -149,7 +163,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   Future<void> cerrarSesion(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
+    await viewModel.cerrarSesion();
 
     if (!context.mounted) return;
 
@@ -157,12 +171,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   bool puedeVerDocumento(Map<String, dynamic> data) {
-    if (tieneAccesoAdministrador) return true;
-
-    final usuario = FirebaseAuth.instance.currentUser;
-    if (usuario == null) return false;
-
-    return data['vendedorId'] == usuario.uid;
+    return viewModel.puedeVerDocumento(data);
   }
 
   Stream<int> contarDocumentos(String coleccion) {
@@ -324,18 +333,12 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   String formatoLempiras(num valor) {
-    final formato = NumberFormat.currency(
-      locale: 'en_US',
-      symbol: 'L. ',
-      decimalDigits: 0,
-    );
-
-    return formato.format(valor);
+    return viewModel.formatoLempiras(valor);
   }
 
   Widget tarjetaClientesDashboard() {
     return StreamBuilder<int>(
-      stream: contarClientesPotenciales(),
+      stream: viewModel.contarClientesPotenciales(),
       builder: (context, snapshot) {
         return KpiCard(
           titulo: 'Potenciales',
@@ -356,7 +359,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   Widget tarjetaVentasMesDashboard() {
     return StreamBuilder<double>(
-      stream: ingresosEsteMes(),
+      stream: viewModel.ingresosEsteMes(),
       builder: (context, snapshot) {
         return KpiCard(
           titulo: 'Ventas del mes',
@@ -377,7 +380,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   Widget tarjetaClientesNuevosDashboard() {
     return StreamBuilder<int>(
-      stream: contarClientesConvertidos(),
+      stream: viewModel.contarClientesConvertidos(),
       builder: (context, snapshot) {
         return KpiCard(
           titulo: 'Clientes',
@@ -401,7 +404,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   Widget tarjetaSeguimientosDashboard() {
     return StreamBuilder<int>(
-      stream: contarSeguimientosPendientes(),
+      stream: viewModel.contarSeguimientosPendientes(),
       builder: (context, snapshot) {
         return KpiCard(
           titulo: 'Seguimientos',
@@ -518,7 +521,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   Widget tarjetaClienteDestacado() {
     return StreamBuilder<Map<String, dynamic>?>(
-      stream: clienteDestacado(),
+      stream: viewModel.clienteDestacado(),
       builder: (context, snapshot) {
         final data = snapshot.data;
 
@@ -584,7 +587,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   Widget tarjetaNotificacionSeguimientos() {
     return StreamBuilder<int>(
-      stream: contarSeguimientosPendientes(),
+      stream: viewModel.contarSeguimientosPendientes(),
       builder: (context, snapshot) {
         final pendientes = snapshot.data ?? 0;
 
@@ -1580,7 +1583,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   Widget drawerDashboard(BuildContext context) {
     final usuario = FirebaseAuth.instance.currentUser;
-    final uid = usuario?.uid;
+    final uid = viewModel.usuarioActualId;
     final ancho = MediaQuery.of(context).size.width;
 
     return Drawer(
@@ -1597,13 +1600,10 @@ class _InicioPantallaState extends State<InicioPantalla> {
             if (uid == null)
               const SizedBox.shrink()
             else
-              StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('usuarios')
-                    .doc(uid)
-                    .snapshots(),
+              StreamBuilder<Map<String, dynamic>?>(
+                stream: viewModel.usuarioActualDataStream(),
                 builder: (context, snapshot) {
-                  final data = snapshot.data?.data() as Map<String, dynamic>?;
+                  final data = snapshot.data;
                   final nombre =
                       (data?['nombre']?.toString().isNotEmpty ?? false)
                       ? data!['nombre'].toString()
@@ -1816,26 +1816,10 @@ class _InicioPantallaState extends State<InicioPantalla> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(86),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('notificaciones')
-              .snapshots(),
+        child: StreamBuilder<int>(
+          stream: viewModel.contarNotificacionesPendientes(),
           builder: (context, snapshot) {
-            final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-            final sesion = SesionUsuario(
-              uid: uid,
-              nombre: '',
-              correo: '',
-              rol: rol,
-              accesoAdministrador: accesoAdministrador,
-            );
-            final notificaciones =
-                snapshot.data?.docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return NotificacionesServicio.esVisiblePara(data, sesion) &&
-                      !NotificacionesServicio.estaLeidaPor(data, uid);
-                }).length ??
-                0;
+            final notificaciones = snapshot.data ?? 0;
 
             return DashboardHeader(
               titulo: 'Dashboard',
