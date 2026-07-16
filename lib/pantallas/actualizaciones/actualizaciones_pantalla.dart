@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../servicios/actualizacion_servicio.dart';
+import '../../viewmodels/actualizaciones_viewmodel.dart';
 
 class ActualizacionesPantalla extends StatefulWidget {
   final ActualizacionInfo? actualizacionInicial;
@@ -16,98 +15,53 @@ class ActualizacionesPantalla extends StatefulWidget {
 }
 
 class _ActualizacionesPantallaState extends State<ActualizacionesPantalla> {
-  ActualizacionInfo? versionPrincipal;
-  bool cargandoVersion = true;
-  bool descargando = false;
-  double progreso = 0;
-  String? rutaDescargada;
-  int? buildEnDescarga;
+  late final ActualizacionesViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
-    _cargarVersionPrincipal();
+    viewModel = ActualizacionesViewModel(
+      actualizacionInicial: widget.actualizacionInicial,
+    );
+    viewModel.addListener(_actualizar);
+    viewModel.cargarVersionPrincipal();
   }
 
-  Future<void> _cargarVersionPrincipal() async {
-    try {
-      final version =
-          widget.actualizacionInicial ??
-          await ActualizacionServicio.obtenerVersionPrincipal();
+  @override
+  void dispose() {
+    viewModel.removeListener(_actualizar);
+    viewModel.dispose();
+    super.dispose();
+  }
 
-      if (!mounted) return;
-
-      setState(() {
-        versionPrincipal = version;
-        cargandoVersion = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-
-      setState(() {
-        cargandoVersion = false;
-      });
-    }
+  void _actualizar() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _descargarEInstalar(ActualizacionInfo version) async {
-    if (!Platform.isAndroid) {
-      _mostrarMensaje(
-        'La instalacion interna de APK esta disponible para Android.',
-      );
+    final mensaje = await viewModel.descargarActualizacion(version);
+
+    if (!mounted) return;
+
+    if (mensaje != null) {
+      _mostrarMensaje(mensaje);
       return;
     }
 
-    setState(() {
-      descargando = true;
-      progreso = 0;
-      rutaDescargada = null;
-      buildEnDescarga = version.buildActual;
-    });
-
-    try {
-      final ruta = await ActualizacionServicio.descargarActualizacion(
-        url: version.urlActualizacion,
-        nombreArchivo:
-            'sapinf_crm_${version.versionActual}_${version.buildActual}.apk',
-        onProgreso: (valor) {
-          if (!mounted) return;
-          setState(() {
-            progreso = valor.clamp(0, 1);
-          });
-        },
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        rutaDescargada = ruta;
-        descargando = false;
-      });
-
+    final ruta = viewModel.rutaDescargada;
+    if (ruta != null) {
       await _instalar(ruta);
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        descargando = false;
-      });
-
-      _mostrarMensaje(
-        'No se pudo descargar la actualizacion. Revisa el enlace configurado.',
-      );
     }
   }
 
   Future<void> _instalar(String ruta) async {
-    final abierto = await ActualizacionServicio.instalarActualizacion(ruta);
+    final mensaje = await viewModel.instalar(ruta);
 
     if (!mounted) return;
 
-    if (!abierto) {
-      _mostrarMensaje(
-        'No se pudo abrir el instalador. Verifica permisos de instalacion.',
-      );
+    if (mensaje != null) {
+      _mostrarMensaje(mensaje);
     }
   }
 
@@ -197,9 +151,8 @@ class _ActualizacionesPantallaState extends State<ActualizacionesPantalla> {
 
   Widget _tarjetaVersion(ActualizacionInfo version, {bool principal = false}) {
     final color = _colorTipo(version.tipo);
-    final descargandoEsta =
-        descargando && buildEnDescarga == version.buildActual;
-    final instalada = version.buildActual == version.buildInstalado;
+    final descargandoEsta = viewModel.estaDescargando(version);
+    final instalada = viewModel.esVersionInstalada(version);
 
     return Container(
       width: double.infinity,
@@ -299,13 +252,13 @@ class _ActualizacionesPantallaState extends State<ActualizacionesPantalla> {
           const SizedBox(height: 14),
           if (descargandoEsta) ...[
             LinearProgressIndicator(
-              value: progreso <= 0 ? null : progreso,
+              value: viewModel.progreso <= 0 ? null : viewModel.progreso,
               color: color,
               backgroundColor: color.withValues(alpha: 0.14),
             ),
             const SizedBox(height: 8),
             Text(
-              'Descargando ${(progreso * 100).clamp(0, 100).toStringAsFixed(0)}%',
+              'Descargando ${(viewModel.progreso * 100).clamp(0, 100).toStringAsFixed(0)}%',
               style: GoogleFonts.poppins(
                 color: Colors.grey.shade600,
                 fontSize: 12,
@@ -339,11 +292,10 @@ class _ActualizacionesPantallaState extends State<ActualizacionesPantalla> {
                     ),
                   ),
                 ),
-                if (rutaDescargada != null &&
-                    buildEnDescarga == version.buildActual) ...[
+                if (viewModel.puedeReintentarInstalacion(version)) ...[
                   const SizedBox(width: 10),
                   IconButton.filledTonal(
-                    onPressed: () => _instalar(rutaDescargada!),
+                    onPressed: () => _instalar(viewModel.rutaDescargada!),
                     icon: const Icon(Icons.install_mobile_rounded),
                   ),
                 ],
@@ -377,7 +329,7 @@ class _ActualizacionesPantallaState extends State<ActualizacionesPantalla> {
 
   Widget _versionesRecuperacion() {
     return StreamBuilder<List<ActualizacionInfo>>(
-      stream: ActualizacionServicio.versionesDisponibles(),
+      stream: viewModel.versionesDisponibles,
       builder: (context, snapshot) {
         final versiones = snapshot.data ?? const <ActualizacionInfo>[];
 
@@ -415,7 +367,7 @@ class _ActualizacionesPantallaState extends State<ActualizacionesPantalla> {
         ),
       ),
       body: RefreshIndicator(
-        onRefresh: _cargarVersionPrincipal,
+        onRefresh: viewModel.cargarVersionPrincipal,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
@@ -431,15 +383,15 @@ class _ActualizacionesPantallaState extends State<ActualizacionesPantalla> {
               ),
             ),
             const SizedBox(height: 10),
-            if (cargandoVersion)
+            if (viewModel.cargandoVersion)
               const Center(child: CircularProgressIndicator())
-            else if (versionPrincipal == null)
+            else if (viewModel.versionPrincipal == null)
               Text(
                 'No hay una version principal configurada.',
                 style: GoogleFonts.poppins(color: Colors.grey.shade600),
               )
             else
-              _tarjetaVersion(versionPrincipal!, principal: true),
+              _tarjetaVersion(viewModel.versionPrincipal!, principal: true),
             const SizedBox(height: 8),
             _instruccionRollback(),
             const SizedBox(height: 20),
