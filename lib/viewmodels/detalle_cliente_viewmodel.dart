@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/cliente_model.dart';
 import '../repositories/clientes_repository.dart';
@@ -159,6 +160,92 @@ class DetalleClienteViewModel extends ChangeNotifier {
   String formatearFechaHora(dynamic fecha) {
     if (fecha is! Timestamp) return 'Sin fecha';
     return DateFormat('dd/MM/yyyy HH:mm').format(fecha.toDate());
+  }
+
+  String normalizarNumero(String valor, {bool permitirMas = false}) {
+    return String.fromCharCodes(
+      valor.codeUnits.where((codigo) {
+        final esDigito = codigo >= 48 && codigo <= 57;
+        return esDigito || (permitirMas && codigo == 43);
+      }),
+    );
+  }
+
+  Future<String?> abrirTelefono(String telefono) async {
+    final numero = normalizarNumero(telefono, permitirMas: true);
+
+    if (numero.isEmpty ||
+        telefono == 'Sin telefono' ||
+        telefono == 'Sin teléfono') {
+      return 'Este cliente no tiene teléfono';
+    }
+
+    final uri = Uri(scheme: 'tel', path: numero);
+
+    try {
+      final abierto = await launchUrl(uri);
+      if (abierto) return null;
+    } catch (_) {
+      // Se devuelve un mensaje abajo si el dispositivo no puede abrir llamadas.
+    }
+
+    return 'No se pudo iniciar la llamada';
+  }
+
+  Future<String?> abrirWhatsApp(String telefono) async {
+    var numero = normalizarNumero(telefono);
+    if (numero.length == 8) numero = '504$numero';
+
+    if (numero.isEmpty ||
+        telefono == 'Sin telefono' ||
+        telefono == 'Sin teléfono') {
+      return 'Este prospecto no tiene teléfono';
+    }
+
+    final uriAplicacion = Uri(
+      scheme: 'whatsapp',
+      host: 'send',
+      queryParameters: {'phone': numero},
+    );
+    final uriWeb = Uri.parse('https://wa.me/$numero');
+
+    try {
+      if (await launchUrl(
+        uriAplicacion,
+        mode: LaunchMode.externalApplication,
+      )) {
+        return null;
+      }
+    } catch (_) {
+      // Si WhatsApp no esta instalado, se intenta con el enlace web.
+    }
+
+    try {
+      if (await launchUrl(uriWeb, mode: LaunchMode.externalApplication)) {
+        return null;
+      }
+    } catch (_) {
+      // Se devuelve un mensaje abajo si ningun enlace puede abrirse.
+    }
+
+    return 'No se pudo abrir WhatsApp';
+  }
+
+  Future<String?> abrirCorreo(String correo) async {
+    if (correo.trim().isEmpty || correo == 'Sin correo') {
+      return 'Este cliente no tiene correo';
+    }
+
+    final uri = Uri(scheme: 'mailto', path: correo.trim());
+
+    try {
+      final abierto = await launchUrl(uri);
+      if (abierto) return null;
+    } catch (_) {
+      // Se devuelve un mensaje abajo si el dispositivo no puede abrir correos.
+    }
+
+    return 'No se pudo abrir el correo';
   }
 }
 

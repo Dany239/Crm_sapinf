@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../seguimientos/agregar_seguimiento_pantalla.dart';
 import '../ventas/agregar_venta_pantalla.dart';
@@ -40,28 +37,6 @@ class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
   void dispose() {
     viewModel.dispose();
     super.dispose();
-  }
-
-  String formatearFecha(Timestamp? fecha) {
-    if (fecha == null) return 'Sin fecha';
-
-    final date = fecha.toDate();
-
-    return '${date.day}/${date.month}/${date.year}';
-  }
-
-  String formatearFechaHora(dynamic fecha) {
-    if (fecha is! Timestamp) return 'Sin fecha';
-    return DateFormat('dd/MM/yyyy HH:mm').format(fecha.toDate());
-  }
-
-  String normalizarNumero(String valor, {bool permitirMas = false}) {
-    return String.fromCharCodes(
-      valor.codeUnits.where((codigo) {
-        final esDigito = codigo >= 48 && codigo <= 57;
-        return esDigito || (permitirMas && codigo == 43);
-      }),
-    );
   }
 
   Widget tarjetaResumen({
@@ -108,16 +83,6 @@ class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
     );
   }
 
-  String formatoLempiras(num valor) {
-    final formato = NumberFormat.currency(
-      locale: 'en_US',
-      symbol: 'L. ',
-      decimalDigits: 0,
-    );
-
-    return formato.format(valor);
-  }
-
   Future<void> convertirEnCliente(BuildContext context) async {
     final convertido = await viewModel.convertirEnCliente();
 
@@ -142,102 +107,39 @@ class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
   }
 
   Future<void> abrirTelefono(BuildContext context, String telefono) async {
-    final numero = normalizarNumero(telefono, permitirMas: true);
-
-    if (numero.isEmpty || telefono == 'Sin teléfono') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este cliente no tiene teléfono')),
-      );
-      return;
-    }
-
-    final uri = Uri(scheme: 'tel', path: numero);
-
-    try {
-      final abierto = await launchUrl(uri);
-
-      if (abierto) {
-        return;
-      }
-    } catch (_) {
-      // Se muestra un mensaje abajo si el dispositivo no puede abrir llamadas.
-    }
+    final mensaje = await viewModel.abrirTelefono(telefono);
 
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No se pudo iniciar la llamada')),
-    );
+    if (mensaje != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(mensaje)));
+    }
   }
 
   Future<void> abrirWhatsApp(BuildContext context, String telefono) async {
-    var numero = normalizarNumero(telefono);
-    if (numero.length == 8) numero = '504$numero';
-
-    if (numero.isEmpty || telefono == 'Sin tel\u00e9fono') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este prospecto no tiene tel\u00e9fono')),
-      );
-      return;
-    }
-
-    final uriAplicacion = Uri(
-      scheme: 'whatsapp',
-      host: 'send',
-      queryParameters: {'phone': numero},
-    );
-    final uriWeb = Uri.parse('https://wa.me/$numero');
-
-    try {
-      if (await launchUrl(
-        uriAplicacion,
-        mode: LaunchMode.externalApplication,
-      )) {
-        return;
-      }
-    } catch (_) {
-      // Si WhatsApp no esta instalado, se intenta con el enlace web.
-    }
-
-    try {
-      if (await launchUrl(uriWeb, mode: LaunchMode.externalApplication)) {
-        return;
-      }
-    } catch (_) {
-      // Se muestra un mensaje abajo si ningun enlace puede abrirse.
-    }
+    final mensaje = await viewModel.abrirWhatsApp(telefono);
 
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('No se pudo abrir WhatsApp')));
+
+    if (mensaje != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(mensaje)));
+    }
   }
 
   Future<void> abrirCorreo(BuildContext context, String correo) async {
-    if (correo.trim().isEmpty || correo == 'Sin correo') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Este cliente no tiene correo')),
-      );
-      return;
-    }
-
-    final uri = Uri(scheme: 'mailto', path: correo.trim());
-
-    try {
-      final abierto = await launchUrl(uri);
-
-      if (abierto) {
-        return;
-      }
-    } catch (_) {
-      // Se muestra un mensaje abajo si el dispositivo no puede abrir correos.
-    }
+    final mensaje = await viewModel.abrirCorreo(correo);
 
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('No se pudo abrir el correo')));
+    if (mensaje != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(mensaje)));
+    }
   }
 
   void abrirNuevoSeguimiento(BuildContext context, String nombre) {
@@ -365,7 +267,7 @@ class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
                     ),
                     trailing: esVenta
                         ? Text(
-                            formatoLempiras(actividad['monto']),
+                            viewModel.formatoLempiras(actividad['monto']),
                             style: const TextStyle(
                               color: Colors.green,
                               fontWeight: FontWeight.bold,
@@ -808,7 +710,9 @@ class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
                         children: [
                           tarjetaResumen(
                             titulo: 'Total comprado',
-                            valor: formatoLempiras(resumen.totalComprado),
+                            valor: viewModel.formatoLempiras(
+                              resumen.totalComprado,
+                            ),
                             icono: Icons.payments,
                             color: Colors.green,
                           ),
@@ -826,7 +730,9 @@ class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
                           ),
                           tarjetaResumen(
                             titulo: 'Última venta',
-                            valor: formatearFecha(resumen.ultimaVentaFecha),
+                            valor: viewModel.formatearFecha(
+                              resumen.ultimaVentaFecha,
+                            ),
                             icono: Icons.calendar_month,
                             color: Colors.purple,
                           ),
@@ -908,7 +814,7 @@ class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
                                 ),
                               ),
                               Text(
-                                formatoLempiras(montoVenta),
+                                viewModel.formatoLempiras(montoVenta),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 17,
@@ -1100,7 +1006,9 @@ class _DetalleClientePantallaState extends State<DetalleClientePantalla> {
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
-                                        formatearFechaHora(fechaActividad),
+                                        viewModel.formatearFechaHora(
+                                          fechaActividad,
+                                        ),
                                         style: const TextStyle(
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
