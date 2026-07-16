@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:convert';
@@ -1132,20 +1131,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
     return 'Buenas noches';
   }
 
-  String nombreUsuario(User? usuario) {
-    final nombre = usuario?.displayName;
-
-    if (nombre != null && nombre.trim().isNotEmpty) {
-      return nombre.trim();
-    }
-
-    final email = usuario?.email;
-
-    if (email != null && email.trim().isNotEmpty) {
-      return email.split('@').first;
-    }
-
-    return 'Vendedor';
+  String nombreUsuario() {
+    return viewModel.nombreUsuarioActual();
   }
 
   ImageProvider? fotoPerfilDesdeData(Map<String, dynamic>? data) {
@@ -1220,7 +1207,6 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   Widget drawerDashboard(BuildContext context) {
-    final usuario = FirebaseAuth.instance.currentUser;
     final uid = viewModel.usuarioActualId;
     final ancho = MediaQuery.of(context).size.width;
 
@@ -1245,7 +1231,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
                   final nombre =
                       (data?['nombre']?.toString().isNotEmpty ?? false)
                       ? data!['nombre'].toString()
-                      : nombreUsuario(usuario);
+                      : nombreUsuario();
                   final rolUsuario = data?['rol']?.toString() ?? rol;
                   final rolTexto = rolUsuario.isEmpty
                       ? 'Vendedor'
@@ -1440,9 +1426,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
 
   @override
   Widget build(BuildContext context) {
-    final usuario = FirebaseAuth.instance.currentUser;
     final saludo = saludoSegunHora();
-    final nombre = nombreUsuario(usuario);
+    final nombre = nombreUsuario();
 
     if (rol.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));

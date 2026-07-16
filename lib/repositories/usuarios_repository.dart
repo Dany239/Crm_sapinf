@@ -33,6 +33,8 @@ class UsuariosRepository {
 
   String? get usuarioActualCorreo => _auth.currentUser?.email;
 
+  String? get usuarioActualNombre => _auth.currentUser?.displayName;
+
   Future<void> cerrarSesion() {
     return _auth.signOut();
   }

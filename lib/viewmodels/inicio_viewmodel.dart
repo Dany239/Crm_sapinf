@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
@@ -49,6 +48,7 @@ class InicioViewModel extends ChangeNotifier {
 
   String? get usuarioActualId => _usuariosRepository.usuarioActualId;
   String? get usuarioActualCorreo => _usuariosRepository.usuarioActualCorreo;
+  String? get usuarioActualNombre => _usuariosRepository.usuarioActualNombre;
 
   bool esRolAdministrador(String? valor) {
     final rolNormalizado = valor?.toString().trim().toLowerCase() ?? '';
@@ -469,11 +469,11 @@ class InicioViewModel extends ChangeNotifier {
     return formato.format(valor);
   }
 
-  String nombreUsuario(User? usuario) {
-    final nombre = usuario?.displayName;
+  String nombreUsuarioActual() {
+    final nombre = usuarioActualNombre;
     if (nombre != null && nombre.trim().isNotEmpty) return nombre;
 
-    final correo = usuario?.email;
+    final correo = usuarioActualCorreo;
     if (correo != null && correo.contains('@')) {
       return correo.split('@').first;
     }
