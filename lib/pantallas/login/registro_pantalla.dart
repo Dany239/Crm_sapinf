@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../../viewmodels/registro_viewmodel.dart';
 
 class RegistroPantalla extends StatefulWidget {
   const RegistroPantalla({super.key});
@@ -14,16 +14,26 @@ class _RegistroPantallaState extends State<RegistroPantalla> {
   final nombreController = TextEditingController();
   final correoController = TextEditingController();
   final passwordController = TextEditingController();
+  final RegistroViewModel viewModel = RegistroViewModel();
 
-  bool cargando = false;
-  bool verPassword = false;
+  @override
+  void initState() {
+    super.initState();
+    viewModel.addListener(_actualizar);
+  }
 
   @override
   void dispose() {
+    viewModel.removeListener(_actualizar);
+    viewModel.dispose();
     nombreController.dispose();
     correoController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  void _actualizar() {
+    if (mounted) setState(() {});
   }
 
   Future<void> registrarVendedor() async {
@@ -31,67 +41,35 @@ class _RegistroPantallaState extends State<RegistroPantalla> {
     final correo = correoController.text.trim();
     final password = passwordController.text.trim();
 
-    if (nombre.isEmpty || correo.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Completa todos los campos')),
-      );
-      return;
-    }
+    final error = viewModel.validar(
+      nombre: nombre,
+      correo: correo,
+      password: password,
+    );
 
-    if (password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('La contraseña debe tener mínimo 6 caracteres'),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      cargando = true;
-    });
-
-    try {
-      final credencial = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(email: correo, password: password);
-      final uid = credencial.user!.uid;
-      await credencial.user!.updateDisplayName(nombre);
-
-      await FirebaseFirestore.instance.collection('usuarios').doc(uid).set({
-        'nombre': nombre,
-        'correo': correo,
-        'rol': 'vendedor',
-        'fechaRegistro': FieldValue.serverTimestamp(),
-      });
-
-      if (!mounted) return;
-
-      Navigator.popUntil(context, (route) => route.isFirst);
-    } on FirebaseAuthException catch (e) {
-      String mensaje = 'No se pudo crear la cuenta';
-
-      if (e.code == 'email-already-in-use') {
-        mensaje = 'Este correo ya está registrado';
-      } else if (e.code == 'invalid-email') {
-        mensaje = 'Correo electrónico inválido';
-      } else if (e.code == 'weak-password') {
-        mensaje = 'La contraseña es muy débil';
-      } else if (e.code == 'network-request-failed') {
-        mensaje = 'Error de conexión a internet';
-      }
-
-      if (!mounted) return;
-
+    if (error != null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(mensaje)));
-    } finally {
-      if (mounted) {
-        setState(() {
-          cargando = false;
-        });
-      }
+      ).showSnackBar(SnackBar(content: Text(error)));
+      return;
     }
+
+    final mensajeError = await viewModel.registrarVendedor(
+      nombre: nombre,
+      correo: correo,
+      password: password,
+    );
+
+    if (!mounted) return;
+
+    if (mensajeError != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(mensajeError)));
+      return;
+    }
+
+    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   InputDecoration campoDecoracion({
@@ -126,8 +104,8 @@ class _RegistroPantallaState extends State<RegistroPantalla> {
       width: double.infinity,
       height: 54,
       child: ElevatedButton.icon(
-        onPressed: cargando ? null : registrarVendedor,
-        icon: cargando
+        onPressed: viewModel.cargando ? null : registrarVendedor,
+        icon: viewModel.cargando
             ? const SizedBox(
                 width: 20,
                 height: 20,
@@ -138,7 +116,7 @@ class _RegistroPantallaState extends State<RegistroPantalla> {
               )
             : const Icon(Icons.person_add_rounded),
         label: Text(
-          cargando ? 'Creando cuenta...' : 'Crear cuenta',
+          viewModel.cargando ? 'Creando cuenta...' : 'Crear cuenta',
           style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w800),
         ),
         style: ElevatedButton.styleFrom(
@@ -267,21 +245,17 @@ class _RegistroPantallaState extends State<RegistroPantalla> {
                   const SizedBox(height: 14),
                   TextField(
                     controller: passwordController,
-                    obscureText: !verPassword,
+                    obscureText: !viewModel.verPassword,
                     decoration: campoDecoracion(
                       texto: 'Contraseña',
                       icono: Icons.lock_rounded,
                       suffixIcon: IconButton(
                         icon: Icon(
-                          verPassword
+                          viewModel.verPassword
                               ? Icons.visibility_off_rounded
                               : Icons.visibility_rounded,
                         ),
-                        onPressed: () {
-                          setState(() {
-                            verPassword = !verPassword;
-                          });
-                        },
+                        onPressed: viewModel.alternarVerPassword,
                       ),
                     ),
                   ),
