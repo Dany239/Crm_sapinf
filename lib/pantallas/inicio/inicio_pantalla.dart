@@ -645,108 +645,42 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   Widget dashboardAdministrador() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('ventas').snapshots(),
-      builder: (context, ventasSnapshot) {
-        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('seguimientos')
-              .snapshots(),
-          builder: (context, seguimientosSnapshot) {
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('clientes')
-                  .snapshots(),
-              builder: (context, clientesSnapshot) {
-                if (!ventasSnapshot.hasData ||
-                    !seguimientosSnapshot.hasData ||
-                    !clientesSnapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+    return StreamBuilder<List<ResumenVendedorDashboard>>(
+      stream: viewModel.resumenVendedoresDashboard(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-                final resumenes = <String, _ResumenVendedor>{};
+        final vendedores = snapshot.data ?? [];
 
-                _ResumenVendedor resumenDe(Map<String, dynamic> data) {
-                  final id = data['vendedorId']?.toString() ?? 'sin-asignar';
-                  return resumenes.putIfAbsent(
-                    id,
-                    () => _ResumenVendedor(
-                      nombre:
-                          data['vendedorNombre']?.toString() ??
-                          'Sin vendedor asignado',
-                    ),
-                  );
-                }
+        if (vendedores.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No hay actividad comercial registrada'),
+            ),
+          );
+        }
 
-                for (final doc in ventasSnapshot.data!.docs) {
-                  final data = doc.data();
-                  if (!esDelMesActual(data['fechaRegistro'])) continue;
-                  final resumen = resumenDe(data);
-                  resumen.ventas++;
-                  resumen.montoVentas +=
-                      double.tryParse(data['monto'].toString()) ?? 0;
-                  if (data['estado'] == 'Cerrada') {
-                    resumen.ventasCerradas++;
-                    resumen.montoCerrado +=
-                        double.tryParse(data['monto'].toString()) ?? 0;
-                  }
-                }
-
-                for (final doc in seguimientosSnapshot.data!.docs) {
-                  final data = doc.data();
-                  if (data['estado'] == 'Pendiente') {
-                    resumenDe(data).seguimientosPendientes++;
-                  }
-                }
-
-                for (final doc in clientesSnapshot.data!.docs) {
-                  final data = doc.data();
-                  final resumen = resumenDe(data);
-                  final esCliente = data['estadoCliente'] == 'Cliente';
-                  if (!esCliente && esDelMesActual(data['fechaRegistro'])) {
-                    resumen.prospectos++;
-                  }
-                  if (esCliente &&
-                      esDelMesActual(data['fechaConversionCliente'])) {
-                    resumen.convertidos++;
-                  }
-                }
-
-                final vendedores = resumenes.values.toList()
-                  ..sort((a, b) => b.montoCerrado.compareTo(a.montoCerrado));
-
-                if (vendedores.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No hay actividad comercial registrada'),
-                    ),
-                  );
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _tituloSeccion('Top vendedores del mes'),
-                    const SizedBox(height: 10),
-                    ...vendedores
-                        .take(3)
-                        .toList()
-                        .asMap()
-                        .entries
-                        .map(
-                          (entry) =>
-                              _tarjetaTopVendedor(entry.value, entry.key + 1),
-                        ),
-                    const SizedBox(height: 18),
-                    _tituloSeccion('Desempe\u00f1o del equipo'),
-                    const SizedBox(height: 10),
-                    ...vendedores.map(_tarjetaDesempenoVendedor),
-                  ],
-                );
-              },
-            );
-          },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _tituloSeccion('Top vendedores del mes'),
+            const SizedBox(height: 10),
+            ...vendedores
+                .take(3)
+                .toList()
+                .asMap()
+                .entries
+                .map(
+                  (entry) => _tarjetaTopVendedor(entry.value, entry.key + 1),
+                ),
+            const SizedBox(height: 18),
+            _tituloSeccion('Desempe\u00f1o del equipo'),
+            const SizedBox(height: 10),
+            ...vendedores.map(_tarjetaDesempenoVendedor),
+          ],
         );
       },
     );
@@ -763,7 +697,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
     );
   }
 
-  Widget _tarjetaTopVendedor(_ResumenVendedor vendedor, int posicion) {
+  Widget _tarjetaTopVendedor(ResumenVendedorDashboard vendedor, int posicion) {
     final colores = [
       const Color(0xFFFFB300),
       const Color(0xFF78909C),
@@ -822,7 +756,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
     );
   }
 
-  Widget _tarjetaDesempenoVendedor(_ResumenVendedor vendedor) {
+  Widget _tarjetaDesempenoVendedor(ResumenVendedorDashboard vendedor) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -920,55 +854,20 @@ class _InicioPantallaState extends State<InicioPantalla> {
   }
 
   Widget graficosComerciales() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('ventas').snapshots(),
+    return StreamBuilder<GraficosComercialesData>(
+      stream: viewModel.graficosComerciales(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final ahora = DateTime.now();
-        final ventasQuincena = <String, double>{'1-15': 0, '16-fin': 0};
-        final ventasPorVendedor = <String, double>{};
-
-        for (final doc in snapshot.data!.docs) {
-          final venta = doc.data() as Map<String, dynamic>;
-
-          if (!puedeVerDocumento(venta)) continue;
-
-          final monto = double.tryParse(venta['monto'].toString()) ?? 0;
-          final fechaRegistro = venta['fechaRegistro'];
-
-          if (fechaRegistro is Timestamp) {
-            final fecha = fechaRegistro.toDate();
-
-            if (fecha.month == ahora.month && fecha.year == ahora.year) {
-              final quincena = fecha.day <= 15 ? '1-15' : '16-fin';
-              ventasQuincena[quincena] = ventasQuincena[quincena]! + monto;
-            }
-          }
-
-          final vendedor =
-              (venta['vendedorNombre'] ??
-                      venta['vendedorCorreo'] ??
-                      'Sin vendedor')
-                  .toString()
-                  .trim();
-
-          if (vendedor.isNotEmpty) {
-            ventasPorVendedor[vendedor] =
-                (ventasPorVendedor[vendedor] ?? 0) + monto;
-          }
-        }
-
-        final vendedoresOrdenados = ventasPorVendedor.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
+        final data = snapshot.data!;
 
         return Column(
           children: [
-            graficoVentasPorQuincena(ventasQuincena),
+            graficoVentasPorQuincena(data.ventasQuincena),
             const SizedBox(height: 14),
-            graficoVentasPorVendedor(vendedoresOrdenados.take(5).toList()),
+            graficoVentasPorVendedor(data.vendedoresOrdenados.take(5).toList()),
             const SizedBox(height: 14),
             graficoOportunidadesPorEtapa(),
           ],
@@ -1150,8 +1049,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
       Color(0xFF6D4CDB),
     ];
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('clientes').snapshots(),
+    return StreamBuilder<Map<String, int>>(
+      stream: viewModel.oportunidadesPorEtapa(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return tarjetaGrafico(
@@ -1162,15 +1061,7 @@ class _InicioPantallaState extends State<InicioPantalla> {
           );
         }
 
-        final conteo = {for (final etapa in etapas) etapa: 0};
-
-        for (final doc in snapshot.data!.docs) {
-          final cliente = doc.data() as Map<String, dynamic>;
-          if (!puedeVerDocumento(cliente)) continue;
-
-          final etapa = etapaOportunidad(cliente);
-          conteo[etapa] = (conteo[etapa] ?? 0) + 1;
-        }
+        final conteo = snapshot.data ?? {for (final etapa in etapas) etapa: 0};
 
         final total = conteo.values.fold<int>(0, (a, b) => a + b);
 
@@ -1984,17 +1875,4 @@ class _InicioPantallaState extends State<InicioPantalla> {
       ),
     );
   }
-}
-
-class _ResumenVendedor {
-  final String nombre;
-  int ventas = 0;
-  int ventasCerradas = 0;
-  int seguimientosPendientes = 0;
-  int prospectos = 0;
-  int convertidos = 0;
-  double montoVentas = 0;
-  double montoCerrado = 0;
-
-  _ResumenVendedor({required this.nombre});
 }

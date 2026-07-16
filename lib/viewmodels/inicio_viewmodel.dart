@@ -7,6 +7,29 @@ import '../repositories/usuarios_repository.dart';
 import '../servicios/notificaciones_servicio.dart';
 import '../servicios/sesion_usuario.dart';
 
+class ResumenVendedorDashboard {
+  final String nombre;
+  int ventas = 0;
+  int ventasCerradas = 0;
+  int seguimientosPendientes = 0;
+  int prospectos = 0;
+  int convertidos = 0;
+  double montoVentas = 0;
+  double montoCerrado = 0;
+
+  ResumenVendedorDashboard({required this.nombre});
+}
+
+class GraficosComercialesData {
+  final Map<String, double> ventasQuincena;
+  final List<MapEntry<String, double>> vendedoresOrdenados;
+
+  const GraficosComercialesData({
+    required this.ventasQuincena,
+    required this.vendedoresOrdenados,
+  });
+}
+
 class InicioViewModel extends ChangeNotifier {
   InicioViewModel({
     FirebaseFirestore? firestore,
@@ -120,6 +143,13 @@ class InicioViewModel extends ChangeNotifier {
     if (uid == null) return false;
 
     return data['vendedorId'] == uid;
+  }
+
+  bool esDelMesActual(dynamic valor) {
+    if (valor is! Timestamp) return false;
+    final fecha = valor.toDate();
+    final ahora = DateTime.now();
+    return fecha.year == ahora.year && fecha.month == ahora.month;
   }
 
   Stream<int> contarDocumentos(String coleccion) {
@@ -284,6 +314,149 @@ class InicioViewModel extends ChangeNotifier {
             !NotificacionesServicio.estaLeidaPor(data, uid);
       }).length;
     });
+  }
+
+  Stream<List<ResumenVendedorDashboard>> resumenVendedoresDashboard() {
+    return _firestore.collection('ventas').snapshots().asyncMap((
+      ventasSnapshot,
+    ) async {
+      final seguimientosSnapshot = await _firestore
+          .collection('seguimientos')
+          .get();
+      final clientesSnapshot = await _firestore.collection('clientes').get();
+
+      final resumenes = <String, ResumenVendedorDashboard>{};
+
+      ResumenVendedorDashboard resumenDe(Map<String, dynamic> data) {
+        final id = data['vendedorId']?.toString() ?? 'sin-asignar';
+        return resumenes.putIfAbsent(
+          id,
+          () => ResumenVendedorDashboard(
+            nombre:
+                data['vendedorNombre']?.toString() ?? 'Sin vendedor asignado',
+          ),
+        );
+      }
+
+      for (final doc in ventasSnapshot.docs) {
+        final data = doc.data();
+        if (!esDelMesActual(data['fechaRegistro'])) continue;
+        final resumen = resumenDe(data);
+        resumen.ventas++;
+        resumen.montoVentas += double.tryParse(data['monto'].toString()) ?? 0;
+        if (data['estado'] == 'Cerrada') {
+          resumen.ventasCerradas++;
+          resumen.montoCerrado +=
+              double.tryParse(data['monto'].toString()) ?? 0;
+        }
+      }
+
+      for (final doc in seguimientosSnapshot.docs) {
+        final data = doc.data();
+        if (data['estado'] == 'Pendiente') {
+          resumenDe(data).seguimientosPendientes++;
+        }
+      }
+
+      for (final doc in clientesSnapshot.docs) {
+        final data = doc.data();
+        final resumen = resumenDe(data);
+        final esCliente = data['estadoCliente'] == 'Cliente';
+        if (!esCliente && esDelMesActual(data['fechaRegistro'])) {
+          resumen.prospectos++;
+        }
+        if (esCliente && esDelMesActual(data['fechaConversionCliente'])) {
+          resumen.convertidos++;
+        }
+      }
+
+      final vendedores = resumenes.values.toList()
+        ..sort((a, b) => b.montoCerrado.compareTo(a.montoCerrado));
+
+      return vendedores;
+    });
+  }
+
+  Stream<GraficosComercialesData> graficosComerciales() {
+    return _firestore.collection('ventas').snapshots().map((snapshot) {
+      final ahora = DateTime.now();
+      final ventasQuincena = <String, double>{'1-15': 0, '16-fin': 0};
+      final ventasPorVendedor = <String, double>{};
+
+      for (final doc in snapshot.docs) {
+        final venta = doc.data();
+        if (!puedeVerDocumento(venta)) continue;
+
+        final monto = double.tryParse(venta['monto'].toString()) ?? 0;
+        final fechaRegistro = venta['fechaRegistro'];
+
+        if (fechaRegistro is Timestamp) {
+          final fecha = fechaRegistro.toDate();
+
+          if (fecha.month == ahora.month && fecha.year == ahora.year) {
+            final quincena = fecha.day <= 15 ? '1-15' : '16-fin';
+            ventasQuincena[quincena] = ventasQuincena[quincena]! + monto;
+          }
+        }
+
+        final vendedor =
+            (venta['vendedorNombre'] ??
+                    venta['vendedorCorreo'] ??
+                    'Sin vendedor')
+                .toString()
+                .trim();
+
+        if (vendedor.isNotEmpty) {
+          ventasPorVendedor[vendedor] =
+              (ventasPorVendedor[vendedor] ?? 0) + monto;
+        }
+      }
+
+      final vendedoresOrdenados = ventasPorVendedor.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      return GraficosComercialesData(
+        ventasQuincena: ventasQuincena,
+        vendedoresOrdenados: vendedoresOrdenados,
+      );
+    });
+  }
+
+  Stream<Map<String, int>> oportunidadesPorEtapa() {
+    const etapas = [
+      'Prospecto',
+      'Contacto inicial',
+      'Propuesta',
+      'Negociacion',
+      'Cierre',
+    ];
+
+    return _firestore.collection('clientes').snapshots().map((snapshot) {
+      final conteo = {for (final etapa in etapas) etapa: 0};
+
+      for (final doc in snapshot.docs) {
+        final cliente = doc.data();
+        if (!puedeVerDocumento(cliente)) continue;
+
+        final etapa = etapaOportunidad(cliente);
+        conteo[etapa] = (conteo[etapa] ?? 0) + 1;
+      }
+
+      return conteo;
+    });
+  }
+
+  String etapaOportunidad(Map<String, dynamic> cliente) {
+    final estado = (cliente['estadoCliente'] ?? '').toString().toLowerCase();
+    final etapa = (cliente['etapa'] ?? cliente['etapaVenta'] ?? '')
+        .toString()
+        .toLowerCase();
+
+    if (estado == 'cliente') return 'Cierre';
+    if (etapa.contains('negoci')) return 'Negociacion';
+    if (etapa.contains('propuesta')) return 'Propuesta';
+    if (etapa.contains('contact')) return 'Contacto inicial';
+    return 'Prospecto';
   }
 
   String formatoLempiras(num valor) {
