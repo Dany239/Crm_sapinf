@@ -5,11 +5,40 @@ import '../models/notificacion_model.dart';
 import '../repositories/notificaciones_repository.dart';
 import '../servicios/sesion_usuario.dart';
 
+class NotificacionesSesionViewData {
+  const NotificacionesSesionViewData({
+    required this.uid,
+    required this.rol,
+    required this.esAdministrador,
+  });
+
+  factory NotificacionesSesionViewData.fromSesion(SesionUsuario sesion) {
+    return NotificacionesSesionViewData(
+      uid: sesion.uid,
+      rol: sesion.rol,
+      esAdministrador: sesion.esAdministrador,
+    );
+  }
+
+  final String uid;
+  final String rol;
+  final bool esAdministrador;
+
+  String get subtitulo {
+    return esAdministrador ? 'Actividad comercial' : 'Mis actividades';
+  }
+}
+
 class NotificacionesViewModel extends ChangeNotifier {
   NotificacionesViewModel({NotificacionesRepository? repository})
-    : _repository = repository ?? NotificacionesRepository();
+    : _repository = repository ?? NotificacionesRepository() {
+    sesionFuture = obtenerSesionUsuario().then(
+      NotificacionesSesionViewData.fromSesion,
+    );
+  }
 
   final NotificacionesRepository _repository;
+  late final Future<NotificacionesSesionViewData> sesionFuture;
 
   Stream<List<NotificacionModel>> get notificacionesStream {
     return _repository.escucharNotificaciones();
@@ -17,7 +46,7 @@ class NotificacionesViewModel extends ChangeNotifier {
 
   List<NotificacionModel> filtrarVisibles(
     List<NotificacionModel> notificaciones,
-    SesionUsuario sesion,
+    NotificacionesSesionViewData sesion,
   ) {
     return notificaciones.where((notificacion) {
       final usuarios = notificacion.usuariosDestinatarios;

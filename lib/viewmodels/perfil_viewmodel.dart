@@ -63,6 +63,25 @@ class PerfilViewModel extends ChangeNotifier {
     return null;
   }
 
+  Future<String?> cambiarPasswordValidado({
+    required String passwordActual,
+    required String passwordNueva,
+    required String passwordConfirmar,
+  }) async {
+    final error = validarCambioPassword(
+      passwordActual: passwordActual,
+      passwordNueva: passwordNueva,
+      passwordConfirmar: passwordConfirmar,
+    );
+
+    if (error != null) return error;
+
+    return cambiarPassword(
+      passwordActual: passwordActual,
+      passwordNueva: passwordNueva,
+    );
+  }
+
   Future<String?> cambiarPassword({
     required String passwordActual,
     required String passwordNueva,

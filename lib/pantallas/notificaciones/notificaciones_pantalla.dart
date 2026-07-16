@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/notificacion_model.dart';
-import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/notificaciones_viewmodel.dart';
 
 class NotificacionesPantalla extends StatefulWidget {
@@ -14,13 +13,6 @@ class NotificacionesPantalla extends StatefulWidget {
 
 class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
   final NotificacionesViewModel viewModel = NotificacionesViewModel();
-  late final Future<SesionUsuario> sesionFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    sesionFuture = obtenerSesionUsuario();
-  }
 
   @override
   void dispose() {
@@ -83,8 +75,8 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
             ],
           ),
           child: SafeArea(
-            child: FutureBuilder<SesionUsuario>(
-              future: sesionFuture,
+            child: FutureBuilder<NotificacionesSesionViewData>(
+              future: viewModel.sesionFuture,
               builder: (context, sesionSnapshot) {
                 if (!sesionSnapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
@@ -99,7 +91,7 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
     );
   }
 
-  Widget _contenido(SesionUsuario sesion) {
+  Widget _contenido(NotificacionesSesionViewData sesion) {
     return StreamBuilder<List<NotificacionModel>>(
       stream: viewModel.notificacionesStream,
       builder: (context, snapshot) {
@@ -169,9 +161,7 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
               child: Row(
                 children: [
                   Text(
-                    sesion.esAdministrador
-                        ? 'Actividad comercial'
-                        : 'Mis actividades',
+                    sesion.subtitulo,
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       color: Colors.grey.shade600,
@@ -207,7 +197,10 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
     );
   }
 
-  Widget _tarjeta(NotificacionModel notificacion, SesionUsuario sesion) {
+  Widget _tarjeta(
+    NotificacionModel notificacion,
+    NotificacionesSesionViewData sesion,
+  ) {
     final leida = notificacion.estaLeidaPor(sesion.uid);
     final color = obtenerColor(notificacion.color);
 

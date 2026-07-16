@@ -99,22 +99,10 @@ class _PerfilPantallaState extends State<PerfilPantalla> {
     final passwordNueva = datos['nueva'] ?? '';
     final passwordConfirmar = datos['confirmar'] ?? '';
 
-    final error = viewModel.validarCambioPassword(
+    final mensajeError = await viewModel.cambiarPasswordValidado(
       passwordActual: passwordActual,
       passwordNueva: passwordNueva,
       passwordConfirmar: passwordConfirmar,
-    );
-
-    if (error != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
-      return;
-    }
-
-    final mensajeError = await viewModel.cambiarPassword(
-      passwordActual: passwordActual,
-      passwordNueva: passwordNueva,
     );
 
     if (!context.mounted) return;
