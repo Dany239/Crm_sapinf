@@ -1,10 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/servicio_model.dart';
+import '../viewmodels/editar_servicio_viewmodel.dart';
 import 'logo_servicio.dart';
 
 class EditarServicioPantalla extends StatefulWidget {
@@ -25,24 +26,20 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
   late TextEditingController nombreController;
   late TextEditingController descripcionController;
   late TextEditingController precioController;
-
-  bool cargando = false;
-  late String logoBase64;
+  late EditarServicioViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
+    final servicio = ServicioModel.fromMap(
+      widget.servicio,
+      id: widget.servicioId,
+    );
 
-    nombreController = TextEditingController(
-      text: widget.servicio['nombre'] ?? '',
-    );
-    descripcionController = TextEditingController(
-      text: widget.servicio['descripcion'] ?? '',
-    );
-    precioController = TextEditingController(
-      text: widget.servicio['precio'] ?? '',
-    );
-    logoBase64 = widget.servicio['logoBase64']?.toString() ?? '';
+    nombreController = TextEditingController(text: servicio.nombre);
+    descripcionController = TextEditingController(text: servicio.descripcion);
+    precioController = TextEditingController(text: servicio.precio);
+    viewModel = EditarServicioViewModel(servicioInicial: servicio);
   }
 
   Future<void> seleccionarLogo() async {
@@ -62,13 +59,13 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
       );
       return;
     }
-    setState(() => logoBase64 = base64Encode(bytes));
+    setState(() => viewModel.cambiarLogo(base64Encode(bytes)));
   }
 
   Future<void> actualizarServicio() async {
     if (nombreController.text.trim().isEmpty ||
         descripcionController.text.trim().isEmpty ||
-        logoBase64.isEmpty) {
+        viewModel.logoBase64.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Completa el nombre, la descripción y el logo'),
@@ -78,19 +75,15 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
     }
 
     setState(() {
-      cargando = true;
+      viewModel.cargando = true;
     });
 
-    await FirebaseFirestore.instance
-        .collection('servicios')
-        .doc(widget.servicioId)
-        .update({
-      'nombre': nombreController.text.trim(),
-      'descripcion': descripcionController.text.trim(),
-      'precio': precioController.text.trim(),
-      'logoBase64': logoBase64,
-      'fechaActualizacion': FieldValue.serverTimestamp(),
-    });
+    await viewModel.actualizarServicio(
+      servicioId: widget.servicioId,
+      nombre: nombreController.text,
+      descripcion: descripcionController.text,
+      precio: precioController.text,
+    );
 
     if (!mounted) return;
 
@@ -147,10 +140,7 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
     );
 
     if (confirmar == true) {
-      await FirebaseFirestore.instance
-          .collection('servicios')
-          .doc(widget.servicioId)
-          .delete();
+      await viewModel.eliminarServicio(widget.servicioId);
 
       if (!mounted) return;
 
@@ -167,6 +157,7 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
     nombreController.dispose();
     descripcionController.dispose();
     precioController.dispose();
+    viewModel.dispose();
     super.dispose();
   }
 
@@ -217,10 +208,7 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1565C0),
-            Color(0xFF29B6F6),
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -282,8 +270,8 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
       width: double.infinity,
       height: 54,
       child: ElevatedButton.icon(
-        onPressed: cargando ? null : actualizarServicio,
-        icon: cargando
+        onPressed: viewModel.cargando ? null : actualizarServicio,
+        icon: viewModel.cargando
             ? const SizedBox(
                 width: 19,
                 height: 19,
@@ -294,11 +282,8 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
               )
             : const Icon(Icons.save_rounded),
         label: Text(
-          cargando ? 'Guardando...' : 'Guardar cambios',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
+          viewModel.cargando ? 'Guardando...' : 'Guardar cambios',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF1565C0),
@@ -323,11 +308,7 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
           color: Colors.red.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(15),
         ),
-        child: const Icon(
-          Icons.delete_rounded,
-          color: Colors.red,
-          size: 22,
-        ),
+        child: const Icon(Icons.delete_rounded, color: Colors.red, size: 22),
       ),
     );
   }
@@ -346,11 +327,11 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
         ),
         child: Row(
           children: [
-            LogoServicio(logoBase64: logoBase64, size: 64),
+            LogoServicio(logoBase64: viewModel.logoBase64, size: 64),
             const SizedBox(width: 14),
             Expanded(
               child: Text(
-                logoBase64.isEmpty
+                viewModel.logoBase64.isEmpty
                     ? 'Agregar logo del servicio'
                     : 'Cambiar logo del servicio',
                 style: GoogleFonts.poppins(

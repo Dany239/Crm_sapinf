@@ -1,7 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../models/servicio_model.dart';
+import '../viewmodels/seleccionar_servicios_viewmodel.dart';
 import 'logo_servicio.dart';
 
 class SeleccionarServiciosPantalla extends StatefulWidget {
@@ -20,49 +21,31 @@ class SeleccionarServiciosPantalla extends StatefulWidget {
 class _SeleccionarServiciosPantallaState
     extends State<SeleccionarServiciosPantalla> {
   final buscarController = TextEditingController();
-  late final Map<String, Map<String, String>> seleccionados;
-  String busqueda = '';
+  late final SeleccionarServiciosViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
-    seleccionados = {
-      for (final servicio in widget.seleccionInicial)
-        if ((servicio['id'] ?? '').isNotEmpty) servicio['id']!: servicio,
-    };
+    viewModel = SeleccionarServiciosViewModel(
+      seleccionInicial: widget.seleccionInicial,
+    );
   }
 
   @override
   void dispose() {
     buscarController.dispose();
+    viewModel.dispose();
     super.dispose();
   }
 
-  Map<String, String> convertirServicio(
-    String id,
-    Map<String, dynamic> datos,
-  ) {
-    return {
-      'id': id,
-      'nombre': datos['nombre']?.toString() ?? 'Sin nombre',
-      'descripcion': datos['descripcion']?.toString() ?? '',
-      'logoBase64': datos['logoBase64']?.toString() ?? '',
-    };
-  }
-
-  void alternarServicio(Map<String, String> servicio) {
-    final id = servicio['id']!;
+  void alternarServicio(ServicioModel servicio) {
     setState(() {
-      if (seleccionados.containsKey(id)) {
-        seleccionados.remove(id);
-      } else {
-        seleccionados[id] = servicio;
-      }
+      viewModel.alternarServicio(servicio);
     });
   }
 
   void confirmarSeleccion() {
-    Navigator.pop(context, seleccionados.values.toList());
+    Navigator.pop(context, viewModel.obtenerSeleccion());
   }
 
   @override
@@ -95,7 +78,8 @@ class _SeleccionarServiciosPantallaState
                 const SizedBox(height: 16),
                 TextField(
                   controller: buscarController,
-                  onChanged: (valor) => setState(() => busqueda = valor),
+                  onChanged: (valor) =>
+                      setState(() => viewModel.cambiarBusqueda(valor)),
                   decoration: InputDecoration(
                     hintText: 'Buscar servicio...',
                     prefixIcon: const Icon(Icons.search_rounded),
@@ -115,9 +99,8 @@ class _SeleccionarServiciosPantallaState
             ),
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream:
-                  FirebaseFirestore.instance.collection('servicios').snapshots(),
+            child: StreamBuilder<List<ServicioModel>>(
+              stream: viewModel.serviciosStream,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return const Center(
@@ -128,14 +111,9 @@ class _SeleccionarServiciosPantallaState
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final consulta = busqueda.trim().toLowerCase();
-                final servicios = snapshot.data!.docs.where((doc) {
-                  final datos = doc.data() as Map<String, dynamic>;
-                  final texto =
-                      '${datos['nombre'] ?? ''} ${datos['descripcion'] ?? ''}'
-                          .toLowerCase();
-                  return texto.contains(consulta);
-                }).toList();
+                final servicios = viewModel.filtrarServicios(
+                  snapshot.data ?? [],
+                );
 
                 if (servicios.isEmpty) {
                   return Center(
@@ -150,10 +128,10 @@ class _SeleccionarServiciosPantallaState
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
                   itemCount: servicios.length,
                   itemBuilder: (context, index) {
-                    final doc = servicios[index];
-                    final datos = doc.data() as Map<String, dynamic>;
-                    final servicio = convertirServicio(doc.id, datos);
-                    final seleccionado = seleccionados.containsKey(doc.id);
+                    final servicio = servicios[index];
+                    final seleccionado = viewModel.estaSeleccionado(
+                      servicio.id,
+                    );
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
@@ -178,7 +156,7 @@ class _SeleccionarServiciosPantallaState
                             child: Row(
                               children: [
                                 LogoServicio(
-                                  logoBase64: servicio['logoBase64'],
+                                  logoBase64: servicio.logoBase64,
                                   size: 54,
                                 ),
                                 const SizedBox(width: 13),
@@ -188,15 +166,15 @@ class _SeleccionarServiciosPantallaState
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        servicio['nombre']!,
+                                        servicio.nombre,
                                         style: GoogleFonts.poppins(
                                           color: const Color(0xFF10245A),
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
-                                      if (servicio['descripcion']!.isNotEmpty)
+                                      if (servicio.descripcion.isNotEmpty)
                                         Text(
-                                          servicio['descripcion']!,
+                                          servicio.descripcion,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: GoogleFonts.poppins(
@@ -211,8 +189,7 @@ class _SeleccionarServiciosPantallaState
                                   value: seleccionado,
                                   activeColor: const Color(0xFF1565C0),
                                   shape: const CircleBorder(),
-                                  onChanged: (_) =>
-                                      alternarServicio(servicio),
+                                  onChanged: (_) => alternarServicio(servicio),
                                 ),
                               ],
                             ),
@@ -233,8 +210,9 @@ class _SeleccionarServiciosPantallaState
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed:
-                      seleccionados.isEmpty ? null : confirmarSeleccion,
+                  onPressed: viewModel.seleccionados.isEmpty
+                      ? null
+                      : confirmarSeleccion,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1565C0),
                     foregroundColor: Colors.white,
@@ -243,9 +221,9 @@ class _SeleccionarServiciosPantallaState
                     ),
                   ),
                   child: Text(
-                    seleccionados.isEmpty
+                    viewModel.seleccionados.isEmpty
                         ? 'Selecciona al menos uno'
-                        : 'Seleccionar (${seleccionados.length})',
+                        : 'Seleccionar (${viewModel.seleccionados.length})',
                     style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
                   ),
                 ),

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 
+import '../models/servicio_model.dart';
+import '../viewmodels/servicios_viewmodel.dart';
 import 'agregar_servicio_pantalla.dart';
 import 'editar_servicio_pantalla.dart';
 import 'logo_servicio.dart';
@@ -16,37 +16,17 @@ class ServiciosPantalla extends StatefulWidget {
 
 class _ServiciosPantallaState extends State<ServiciosPantalla> {
   final buscarController = TextEditingController();
-  String busqueda = '';
+  final ServiciosViewModel viewModel = ServiciosViewModel();
 
   @override
   void dispose() {
     buscarController.dispose();
+    viewModel.dispose();
     super.dispose();
   }
 
   String formatoLempiras(dynamic valor) {
-    final numero = double.tryParse(valor.toString()) ?? 0;
-    final formato = NumberFormat.currency(
-      locale: 'en_US',
-      symbol: 'L. ',
-      decimalDigits: 0,
-    );
-
-    return formato.format(numero);
-  }
-
-  List<QueryDocumentSnapshot> filtrarServicios(
-      List<QueryDocumentSnapshot> docs) {
-    return docs.where((doc) {
-      final servicio = doc.data() as Map<String, dynamic>;
-      final texto = [
-        servicio['nombre'],
-        servicio['descripcion'],
-        servicio['precio'],
-      ].join(' ').toLowerCase();
-
-      return texto.contains(busqueda.toLowerCase());
-    }).toList();
+    return viewModel.formatoLempiras(valor.toString());
   }
 
   Widget encabezado(int total) {
@@ -54,10 +34,7 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1565C0),
-            Color(0xFF29B6F6),
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -132,7 +109,7 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
         controller: buscarController,
         onChanged: (value) {
           setState(() {
-            busqueda = value;
+            viewModel.cambiarBusqueda(value);
           });
         },
         style: GoogleFonts.poppins(),
@@ -147,14 +124,7 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
     );
   }
 
-  Widget tarjetaServicio({
-    required String id,
-    required Map<String, dynamic> servicio,
-  }) {
-    final nombre = servicio['nombre'] ?? 'Sin nombre';
-    final descripcion = servicio['descripcion'] ?? 'Sin descripción';
-    final precio = servicio['precio'] ?? 0;
-
+  Widget tarjetaServicio({required ServicioModel servicio}) {
     return InkWell(
       borderRadius: BorderRadius.circular(22),
       onTap: () {
@@ -162,8 +132,8 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
           context,
           MaterialPageRoute(
             builder: (context) => EditarServicioPantalla(
-              servicioId: id,
-              servicio: servicio,
+              servicioId: servicio.id,
+              servicio: servicio.toPlainMap(),
             ),
           ),
         );
@@ -185,17 +155,14 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
         ),
         child: Row(
           children: [
-            LogoServicio(
-              logoBase64: servicio['logoBase64']?.toString(),
-              size: 50,
-            ),
+            LogoServicio(logoBase64: servicio.logoBase64, size: 50),
             const SizedBox(width: 13),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    nombre,
+                    servicio.nombre,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
@@ -206,7 +173,9 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    descripcion,
+                    servicio.descripcion.isEmpty
+                        ? 'Sin descripción'
+                        : servicio.descripcion,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
@@ -225,7 +194,7 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
-                      formatoLempiras(precio),
+                      formatoLempiras(servicio.precio),
                       style: GoogleFonts.poppins(
                         color: Colors.green.shade700,
                         fontSize: 12,
@@ -317,8 +286,8 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
           );
         },
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('servicios').snapshots(),
+      body: StreamBuilder<List<ServicioModel>>(
+        stream: viewModel.serviciosStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
@@ -328,8 +297,8 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final todos = snapshot.data!.docs;
-          final servicios = filtrarServicios(todos);
+          final todos = snapshot.data ?? [];
+          final servicios = viewModel.filtrarServicios(todos);
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
@@ -341,9 +310,8 @@ class _ServiciosPantallaState extends State<ServiciosPantalla> {
               if (servicios.isEmpty)
                 SizedBox(height: 280, child: vacio())
               else
-                ...servicios.map((doc) {
-                  final servicio = doc.data() as Map<String, dynamic>;
-                  return tarjetaServicio(id: doc.id, servicio: servicio);
+                ...servicios.map((servicio) {
+                  return tarjetaServicio(servicio: servicio);
                 }),
             ],
           );

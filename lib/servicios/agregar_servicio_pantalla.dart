@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../viewmodels/agregar_servicio_viewmodel.dart';
 import 'logo_servicio.dart';
 
 class AgregarServicioPantalla extends StatefulWidget {
@@ -19,9 +19,7 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
   final nombreController = TextEditingController();
   final descripcionController = TextEditingController();
   final precioController = TextEditingController();
-
-  bool cargando = false;
-  String logoBase64 = '';
+  final AgregarServicioViewModel viewModel = AgregarServicioViewModel();
 
   Future<void> seleccionarLogo() async {
     final imagen = await ImagePicker().pickImage(
@@ -40,7 +38,7 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
       );
       return;
     }
-    setState(() => logoBase64 = base64Encode(bytes));
+    setState(() => viewModel.cambiarLogo(base64Encode(bytes)));
   }
 
   Future<void> guardarServicio() async {
@@ -56,7 +54,7 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
       );
       return;
     }
-    if (logoBase64.isEmpty) {
+    if (viewModel.logoBase64.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Selecciona el logo del servicio')),
       );
@@ -64,16 +62,14 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
     }
 
     setState(() {
-      cargando = true;
+      viewModel.cargando = true;
     });
 
-    await FirebaseFirestore.instance.collection('servicios').add({
-      'nombre': nombreController.text.trim(),
-      'descripcion': descripcionController.text.trim(),
-      'precio': precioController.text.trim(),
-      'logoBase64': logoBase64,
-      'fechaRegistro': FieldValue.serverTimestamp(),
-    });
+    await viewModel.guardarServicio(
+      nombre: nombreController.text,
+      descripcion: descripcionController.text,
+      precio: precioController.text,
+    );
 
     if (!mounted) return;
 
@@ -89,6 +85,7 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
     nombreController.dispose();
     descripcionController.dispose();
     precioController.dispose();
+    viewModel.dispose();
     super.dispose();
   }
 
@@ -139,10 +136,7 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1565C0),
-            Color(0xFF29B6F6),
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -204,8 +198,8 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
       width: double.infinity,
       height: 54,
       child: ElevatedButton.icon(
-        onPressed: cargando ? null : guardarServicio,
-        icon: cargando
+        onPressed: viewModel.cargando ? null : guardarServicio,
+        icon: viewModel.cargando
             ? const SizedBox(
                 width: 19,
                 height: 19,
@@ -216,11 +210,8 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
               )
             : const Icon(Icons.save_rounded),
         label: Text(
-          cargando ? 'Guardando...' : 'Guardar servicio',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
+          viewModel.cargando ? 'Guardando...' : 'Guardar servicio',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w800, fontSize: 15),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF1565C0),
@@ -248,14 +239,14 @@ class _AgregarServicioPantallaState extends State<AgregarServicioPantalla> {
         ),
         child: Row(
           children: [
-            LogoServicio(logoBase64: logoBase64, size: 64),
+            LogoServicio(logoBase64: viewModel.logoBase64, size: 64),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    logoBase64.isEmpty
+                    viewModel.logoBase64.isEmpty
                         ? 'Agregar logo del servicio'
                         : 'Cambiar logo',
                     style: GoogleFonts.poppins(
