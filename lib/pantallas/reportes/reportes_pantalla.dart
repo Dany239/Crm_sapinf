@@ -11,6 +11,7 @@ import '../clientes/clientes_pantalla.dart';
 import '../seguimientos/seguimientos_pantalla.dart';
 import '../../servicios/servicios_pantalla.dart';
 import '../../servicios/exportacion_reportes_servicio.dart';
+import '../../viewmodels/reportes_viewmodel.dart';
 
 class ReportesPantalla extends StatefulWidget {
   const ReportesPantalla({super.key});
@@ -20,6 +21,7 @@ class ReportesPantalla extends StatefulWidget {
 }
 
 class _ReportesPantallaState extends State<ReportesPantalla> {
+  final ReportesViewModel viewModel = ReportesViewModel();
   DateTimeRange? rangoSeleccionado;
   String? vendedorIdExportacion;
   String vendedorNombreExportacion = 'Todos los vendedores';
@@ -30,99 +32,35 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
     DateTimeRange rango, {
     String campoFecha = 'fechaRegistro',
   }) {
-    final valor = data[campoFecha];
-    if (valor is! Timestamp) return false;
-    final fecha = valor.toDate();
-    final inicio = DateTime(
-      rango.start.year,
-      rango.start.month,
-      rango.start.day,
-    );
-    final finExclusivo = DateTime(
-      rango.end.year,
-      rango.end.month,
-      rango.end.day + 1,
-    );
-    return !fecha.isBefore(inicio) && fecha.isBefore(finExclusivo);
+    return viewModel.perteneceAlRango(data, rango, campoFecha: campoFecha);
   }
 
   DateTimeRange rangoMesActual() {
-    final ahora = DateTime.now();
-    return DateTimeRange(
-      start: DateTime(ahora.year, ahora.month),
-      end: DateTime(ahora.year, ahora.month + 1, 0),
-    );
+    return viewModel.rangoMesActual();
   }
 
   DateTimeRange rangoAnterior(DateTimeRange rango) {
-    final dias = rango.end.difference(rango.start).inDays + 1;
-    final fin = rango.start.subtract(const Duration(days: 1));
-    return DateTimeRange(
-      start: fin.subtract(Duration(days: dias - 1)),
-      end: fin,
-    );
+    return viewModel.rangoAnterior(rango);
   }
 
   bool mostrarEnFiltro(Map<String, dynamic> data) {
-    final rango = rangoSeleccionado;
-    return rango == null || perteneceAlRango(data, rango);
+    return viewModel.mostrarEnFiltro(data, rangoSeleccionado);
   }
 
   double? calcularVariacion(num actual, num anterior) {
-    if (anterior == 0) return actual == 0 ? 0 : null;
-    return ((actual - anterior) / anterior) * 100;
+    return viewModel.calcularVariacion(actual, anterior);
   }
 
-  Stream<_MetricaReporte> contarDocumentos(String coleccion, {String? estado}) {
-    return FirebaseFirestore.instance.collection(coleccion).snapshots().map((
-      snapshot,
-    ) {
-      final rangoActual = rangoSeleccionado ?? rangoMesActual();
-      final anteriorRango = rangoAnterior(rangoActual);
-      var totalMostrado = 0;
-      var actual = 0;
-      var anterior = 0;
-
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        if (estado != null && data['estado'] != estado) continue;
-
-        if (mostrarEnFiltro(data)) totalMostrado++;
-        if (perteneceAlRango(data, rangoActual)) actual++;
-        if (perteneceAlRango(data, anteriorRango)) anterior++;
-      }
-
-      return _MetricaReporte(
-        valor: totalMostrado,
-        variacion: calcularVariacion(actual, anterior),
-      );
-    });
+  Stream<MetricaReporte> contarDocumentos(String coleccion, {String? estado}) {
+    return viewModel.contarDocumentos(
+      coleccion,
+      estado: estado,
+      rango: rangoSeleccionado,
+    );
   }
 
-  Stream<_MetricaReporte> calcularMontoTotal() {
-    return FirebaseFirestore.instance.collection('ventas').snapshots().map((
-      snapshot,
-    ) {
-      final rangoActual = rangoSeleccionado ?? rangoMesActual();
-      final anteriorRango = rangoAnterior(rangoActual);
-      var totalMostrado = 0.0;
-      var actual = 0.0;
-      var anterior = 0.0;
-
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final monto = double.tryParse(data['monto'].toString()) ?? 0;
-
-        if (mostrarEnFiltro(data)) totalMostrado += monto;
-        if (perteneceAlRango(data, rangoActual)) actual += monto;
-        if (perteneceAlRango(data, anteriorRango)) anterior += monto;
-      }
-
-      return _MetricaReporte(
-        valor: totalMostrado,
-        variacion: calcularVariacion(actual, anterior),
-      );
-    });
+  Stream<MetricaReporte> calcularMontoTotal() {
+    return viewModel.calcularMontoTotal(rangoSeleccionado);
   }
 
   String formatoLempiras(dynamic valor) {
@@ -380,32 +318,11 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   Future<DatosReporteExportacion> _datosParaExportar() async {
-    final resultados = await Future.wait([
-      FirebaseFirestore.instance.collection('ventas').get(),
-      FirebaseFirestore.instance.collection('seguimientos').get(),
-      FirebaseFirestore.instance.collection('clientes').get(),
-    ]);
-
-    List<Map<String, dynamic>> filtrar(
-      QuerySnapshot<Map<String, dynamic>> snapshot,
-    ) {
-      return snapshot.docs.map((doc) => doc.data()).where((data) {
-        final rango = rangoSeleccionado;
-        if (rango != null && !perteneceAlRango(data, rango)) return false;
-        final vendedorId = vendedorIdExportacion;
-        if (vendedorId != null && data['vendedorId'] != vendedorId) {
-          return false;
-        }
-        return true;
-      }).toList();
-    }
-
-    return DatosReporteExportacion(
-      ventas: filtrar(resultados[0]),
-      seguimientos: filtrar(resultados[1]),
-      clientes: filtrar(resultados[2]),
+    return viewModel.datosParaExportar(
+      rango: rangoSeleccionado,
+      vendedorId: vendedorIdExportacion,
       periodo: textoFiltroActual(),
-      vendedor: vendedorNombreExportacion,
+      vendedorNombre: vendedorNombreExportacion,
     );
   }
 
@@ -521,16 +438,10 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
             ],
           ),
           const SizedBox(height: 16),
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('usuarios')
-                .snapshots(),
+          StreamBuilder<List<ReporteVendedor>>(
+            stream: viewModel.vendedoresExportacion(),
             builder: (context, snapshot) {
-              final vendedores =
-                  snapshot.data?.docs.where((doc) {
-                    return doc.data()['rol'] == 'vendedor';
-                  }).toList() ??
-                  [];
+              final vendedores = snapshot.data ?? [];
 
               return DropdownButtonFormField<String>(
                 initialValue: vendedorIdExportacion ?? 'todos',
@@ -546,13 +457,11 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                     value: 'todos',
                     child: Text('Todos los vendedores'),
                   ),
-                  ...vendedores.map((doc) {
-                    final nombre =
-                        doc.data()['nombre']?.toString() ?? 'Sin nombre';
+                  ...vendedores.map((vendedor) {
                     return DropdownMenuItem(
-                      value: doc.id,
+                      value: vendedor.id,
                       child: Text(
-                        nombre,
+                        vendedor.nombre,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -570,11 +479,9 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                           }
                           vendedorIdExportacion = valor;
                           final vendedor = vendedores.firstWhere(
-                            (doc) => doc.id == valor,
+                            (vendedor) => vendedor.id == valor,
                           );
-                          vendedorNombreExportacion =
-                              vendedor.data()['nombre']?.toString() ??
-                              'Vendedor';
+                          vendedorNombreExportacion = vendedor.nombre;
                         });
                       },
               );
@@ -891,10 +798,10 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   Widget _tarjetaResumen(_DatoResumen dato) {
-    return StreamBuilder<_MetricaReporte>(
+    return StreamBuilder<MetricaReporte>(
       stream: dato.stream,
       builder: (context, snapshot) {
-        final metrica = snapshot.data ?? const _MetricaReporte(valor: 0);
+        final metrica = snapshot.data ?? const MetricaReporte(valor: 0);
         return InkWell(
           onTap: dato.onTap,
           borderRadius: BorderRadius.circular(8),
@@ -1006,10 +913,10 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   Widget _montoTotal() {
-    return StreamBuilder<_MetricaReporte>(
+    return StreamBuilder<MetricaReporte>(
       stream: calcularMontoTotal(),
       builder: (context, snapshot) {
-        final metrica = snapshot.data ?? const _MetricaReporte(valor: 0);
+        final metrica = snapshot.data ?? const MetricaReporte(valor: 0);
         final porcentaje = metrica.variacion;
         final esNuevo = porcentaje == null;
         final variacion = porcentaje ?? 0;
@@ -1114,8 +1021,8 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   Widget _ultimasVentas() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('ventas').snapshots(),
+    return StreamBuilder<List<ReporteVentaReciente>>(
+      stream: viewModel.ultimasVentas(rangoSeleccionado),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
@@ -1124,17 +1031,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
           );
         }
 
-        final ventas = [
-          ...?snapshot.data?.docs,
-        ].where((doc) => mostrarEnFiltro(doc.data())).toList();
-        ventas.sort((a, b) {
-          final fechaA = a.data()['fechaRegistro'] as Timestamp?;
-          final fechaB = b.data()['fechaRegistro'] as Timestamp?;
-          return (fechaB?.millisecondsSinceEpoch ?? 0).compareTo(
-            fechaA?.millisecondsSinceEpoch ?? 0,
-          );
-        });
-        final recientes = ventas.take(3).toList();
+        final recientes = snapshot.data ?? [];
 
         if (recientes.isEmpty) {
           return Container(
@@ -1161,8 +1058,8 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
           ),
           child: Column(
             children: List.generate(recientes.length, (index) {
-              final doc = recientes[index];
-              final venta = doc.data();
+              final ventaReciente = recientes[index];
+              final venta = ventaReciente.data;
               final nombre = venta['cliente']?.toString() ?? 'Sin cliente';
               final estado = venta['estado']?.toString() ?? 'Pendiente';
               final colores = [
@@ -1180,7 +1077,7 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
                         context,
                         MaterialPageRoute(
                           builder: (_) => EditarVentaPantalla(
-                            ventaId: doc.id,
+                            ventaId: ventaReciente.id,
                             venta: venta,
                           ),
                         ),
@@ -1296,94 +1193,23 @@ class _ReportesPantallaState extends State<ReportesPantalla> {
   }
 
   Widget _rendimientoVendedores() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('ventas').snapshots(),
-      builder: (context, ventasSnapshot) {
-        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('seguimientos')
-              .snapshots(),
-          builder: (context, seguimientosSnapshot) {
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('clientes')
-                  .snapshots(),
-              builder: (context, clientesSnapshot) {
-                if (!ventasSnapshot.hasData ||
-                    !seguimientosSnapshot.hasData ||
-                    !clientesSnapshot.hasData) {
-                  return const SizedBox(
-                    height: 100,
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: viewModel.rendimientoVendedores(rangoSeleccionado),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox(
+            height: 100,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-                final vendedores = <String, Map<String, dynamic>>{};
+        final lista = snapshot.data ?? [];
 
-                Map<String, dynamic> vendedorDe(Map<String, dynamic> data) {
-                  final id = data['vendedorId']?.toString() ?? 'sin-asignar';
-                  return vendedores.putIfAbsent(id, () {
-                    return {
-                      'nombre':
-                          data['vendedorNombre']?.toString() ??
-                          'Sin vendedor asignado',
-                      'ventas': 0,
-                      'cerradas': 0,
-                      'seguimientos': 0,
-                      'realizados': 0,
-                      'prospectos': 0,
-                    };
-                  });
-                }
+        if (lista.isEmpty) {
+          return _mensajeVacio('No hay actividad de vendedores');
+        }
 
-                for (final doc in ventasSnapshot.data!.docs) {
-                  final data = doc.data();
-                  if (!mostrarEnFiltro(data)) continue;
-                  final vendedor = vendedorDe(data);
-                  vendedor['ventas'] = (vendedor['ventas'] as int) + 1;
-                  if (data['estado'] == 'Cerrada') {
-                    vendedor['cerradas'] = (vendedor['cerradas'] as int) + 1;
-                  }
-                }
-
-                for (final doc in seguimientosSnapshot.data!.docs) {
-                  final data = doc.data();
-                  if (!mostrarEnFiltro(data)) continue;
-                  final vendedor = vendedorDe(data);
-                  vendedor['seguimientos'] =
-                      (vendedor['seguimientos'] as int) + 1;
-                  if (data['estado'] == 'Realizado' &&
-                      data['fechaRealizacion'] is Timestamp) {
-                    vendedor['realizados'] =
-                        (vendedor['realizados'] as int) + 1;
-                  }
-                }
-
-                for (final doc in clientesSnapshot.data!.docs) {
-                  final data = doc.data();
-                  if (!mostrarEnFiltro(data)) continue;
-                  if (data['estadoCliente'] == 'Cliente') continue;
-                  final vendedor = vendedorDe(data);
-                  vendedor['prospectos'] = (vendedor['prospectos'] as int) + 1;
-                }
-
-                final lista = vendedores.values.toList()
-                  ..sort(
-                    (a, b) =>
-                        (b['ventas'] as int).compareTo(a['ventas'] as int),
-                  );
-
-                if (lista.isEmpty) {
-                  return _mensajeVacio('No hay actividad de vendedores');
-                }
-
-                return Column(
-                  children: lista.map(_tarjetaRendimiento).toList(),
-                );
-              },
-            );
-          },
-        );
+        return Column(children: lista.map(_tarjetaRendimiento).toList());
       },
     );
   }
@@ -1496,7 +1322,7 @@ class _DatoResumen {
   final IconData icono;
   final Color color;
   final Color fondo;
-  final Stream<_MetricaReporte> stream;
+  final Stream<MetricaReporte> stream;
   final bool invertirColor;
   final VoidCallback onTap;
 
@@ -1509,13 +1335,6 @@ class _DatoResumen {
     required this.onTap,
     this.invertirColor = false,
   });
-}
-
-class _MetricaReporte {
-  final num valor;
-  final double? variacion;
-
-  const _MetricaReporte({required this.valor, this.variacion});
 }
 
 class _CurvaEncabezado extends CustomClipper<Path> {
