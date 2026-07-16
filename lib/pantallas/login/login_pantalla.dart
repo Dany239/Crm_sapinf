@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'registro_pantalla.dart';
 import '../../widgets/sapinf_logo.dart';
 import '../../widgets/sapinf_textfield.dart';
+import '../../viewmodels/login_viewmodel.dart';
 
 class LoginPantalla extends StatefulWidget {
   const LoginPantalla({super.key});
@@ -14,104 +14,69 @@ class LoginPantalla extends StatefulWidget {
 }
 
 class _LoginPantallaState extends State<LoginPantalla> {
+  final LoginViewModel viewModel = LoginViewModel();
   final correoController = TextEditingController();
   final passwordController = TextEditingController();
   final resetCorreoController = TextEditingController();
 
-  bool cargando = false;
   bool verPassword = false;
+
+  bool get cargando => viewModel.cargando;
+
+  @override
+  void initState() {
+    super.initState();
+    viewModel.addListener(_actualizarEstado);
+  }
 
   @override
   void dispose() {
+    viewModel.removeListener(_actualizarEstado);
+    viewModel.dispose();
     correoController.dispose();
     passwordController.dispose();
     resetCorreoController.dispose();
     super.dispose();
   }
 
+  void _actualizarEstado() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   Future<void> iniciarSesion() async {
-    final correo = correoController.text.trim();
-    final password = passwordController.text.trim();
+    final mensaje = await viewModel.iniciarSesion(
+      correo: correoController.text,
+      password: passwordController.text,
+    );
 
-    if (correo.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingrese correo y contraseña')),
-      );
-      return;
-    }
+    if (!mounted || mensaje == null) return;
 
-    setState(() {
-      cargando = true;
-    });
-
-    try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: correo,
-        password: password,
-      );
-    } on FirebaseAuthException catch (e) {
-      String mensaje = 'Error al iniciar sesión';
-
-      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        mensaje = 'Correo o contraseña incorrectos';
-      } else if (e.code == 'wrong-password') {
-        mensaje = 'Contraseña incorrecta';
-      } else if (e.code == 'invalid-email') {
-        mensaje = 'Correo inválido';
-      } else if (e.code == 'network-request-failed') {
-        mensaje = 'Error de conexión a internet';
-      }
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje)),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          cargando = false;
-        });
-      }
-    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(mensaje)));
   }
 
   Future<void> enviarRecuperacionPassword() async {
-    final correo = resetCorreoController.text.trim();
+    final mensaje = await viewModel.enviarRecuperacionPassword(
+      resetCorreoController.text,
+    );
 
-    if (correo.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Escribe tu correo electrónico')),
-      );
+    if (!mounted) return;
+
+    if (mensaje != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(mensaje)));
       return;
     }
 
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: correo);
-
-      if (!mounted) return;
-
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Te enviamos un correo para cambiar tu contraseña'),
-        ),
-      );
-    } on FirebaseAuthException catch (e) {
-      String mensaje = 'No se pudo enviar el correo';
-
-      if (e.code == 'invalid-email') {
-        mensaje = 'Correo inválido';
-      } else if (e.code == 'user-not-found') {
-        mensaje = 'No existe una cuenta con ese correo';
-      }
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje)),
-      );
-    }
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Te enviamos un correo para cambiar tu contraseña'),
+      ),
+    );
   }
 
   void mostrarRecuperarPassword() {
@@ -182,9 +147,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
                     icon: const Icon(Icons.mark_email_read_rounded),
                     label: Text(
                       'Enviar enlace',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w800,
-                      ),
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w800),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF1565C0),
@@ -234,10 +197,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
             height: 42,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [
-                  Color(0xFF1565C0),
-                  Color(0xFF0D47A1),
-                ],
+                colors: [Color(0xFF1565C0), Color(0xFF0D47A1)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -275,7 +235,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
               ),
             ),
           ),
-          if (suffixIcon != null) suffixIcon,
+          ?suffixIcon,
           const SizedBox(width: 8),
         ],
       ),
@@ -408,9 +368,7 @@ class _LoginPantallaState extends State<LoginPantalla> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SapinfLogo(
-            size: 165,
-          ),
+          const SapinfLogo(size: 165),
           const SizedBox(height: 18),
           Text(
             'SAPINF CRM',
