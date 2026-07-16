@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:convert';
@@ -17,8 +16,6 @@ import '../centro_control/centro_control_comercial_pantalla.dart';
 import '../actualizaciones/actualizaciones_pantalla.dart';
 import '../../widgets/kpi_card.dart';
 import '../../widgets/dashboard_header.dart';
-import '../../servicios/notificaciones_servicio.dart';
-import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/inicio_viewmodel.dart';
 
 class InicioPantalla extends StatefulWidget {
@@ -105,231 +102,12 @@ class _InicioPantallaState extends State<InicioPantalla> {
     });
   }
 
-  Future<void> cargarRol() async {
-    try {
-      final usuario = FirebaseAuth.instance.currentUser;
-
-      if (usuario == null) {
-        setState(() {
-          rol = 'vendedor';
-        });
-        return;
-      }
-
-      final doc = await FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(usuario.uid)
-          .get();
-
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        final rolUsuario =
-            data['rol']?.toString().trim().toLowerCase() ?? 'vendedor';
-        final tieneAccesoExtra = tieneAccesoAdministradorDesdeData(data);
-
-        if (!mounted) return;
-        setState(() {
-          rol = rolUsuario;
-          accesoAdministrador = tieneAccesoExtra;
-        });
-
-        final sesion = SesionUsuario(
-          uid: usuario.uid,
-          nombre: data['nombre']?.toString() ?? 'Vendedor',
-          correo: data['correo']?.toString() ?? usuario.email ?? '',
-          rol: rolUsuario,
-          accesoAdministrador: tieneAccesoExtra,
-        );
-
-        try {
-          await NotificacionesServicio.generarRecordatoriosPendientes(sesion);
-        } catch (_) {
-          // Los accesos no deben depender de la generación de recordatorios.
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            rol = 'vendedor';
-          });
-        }
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          rol = 'vendedor';
-        });
-      }
-    }
-  }
-
   Future<void> cerrarSesion(BuildContext context) async {
     await viewModel.cerrarSesion();
 
     if (!context.mounted) return;
 
     Navigator.pop(context);
-  }
-
-  bool puedeVerDocumento(Map<String, dynamic> data) {
-    return viewModel.puedeVerDocumento(data);
-  }
-
-  Stream<int> contarDocumentos(String coleccion) {
-    return FirebaseFirestore.instance.collection(coleccion).snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        return puedeVerDocumento(data);
-      }).length;
-    });
-  }
-
-  Stream<int> contarClientesPotenciales() {
-    return FirebaseFirestore.instance.collection('clientes').snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        if (!puedeVerDocumento(data)) return false;
-
-        final estado = data['estadoCliente']?.toString() ?? 'Cliente potencial';
-
-        return estado != 'Cliente';
-      }).length;
-    });
-  }
-
-  Stream<int> contarClientesConvertidos() {
-    return FirebaseFirestore.instance.collection('clientes').snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        if (!puedeVerDocumento(data)) return false;
-
-        final estado = data['estadoCliente']?.toString() ?? 'Cliente potencial';
-
-        return estado == 'Cliente';
-      }).length;
-    });
-  }
-
-  Stream<int> contarVentasCerradas() {
-    return FirebaseFirestore.instance
-        .collection('ventas')
-        .where('estado', isEqualTo: 'Cerrada')
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.where((doc) {
-            final data = doc.data();
-            return puedeVerDocumento(data);
-          }).length;
-        });
-  }
-
-  Stream<int> ventasEsteMes() {
-    final ahora = DateTime.now();
-
-    return FirebaseFirestore.instance.collection('ventas').snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        if (!puedeVerDocumento(data)) return false;
-
-        if (data['fechaRegistro'] == null) return false;
-
-        final fecha = (data['fechaRegistro'] as Timestamp).toDate();
-
-        return fecha.month == ahora.month && fecha.year == ahora.year;
-      }).length;
-    });
-  }
-
-  Stream<int> clientesNuevosEsteMes() {
-    final ahora = DateTime.now();
-
-    return FirebaseFirestore.instance.collection('clientes').snapshots().map((
-      snapshot,
-    ) {
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        if (!puedeVerDocumento(data)) return false;
-
-        if (data['fechaRegistro'] == null) return false;
-
-        final fecha = (data['fechaRegistro'] as Timestamp).toDate();
-
-        return fecha.month == ahora.month && fecha.year == ahora.year;
-      }).length;
-    });
-  }
-
-  Stream<double> ingresosEsteMes() {
-    final ahora = DateTime.now();
-
-    return FirebaseFirestore.instance.collection('ventas').snapshots().map((
-      snapshot,
-    ) {
-      double total = 0;
-
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        if (!puedeVerDocumento(data)) continue;
-
-        if (data['fechaRegistro'] == null) continue;
-
-        final fecha = (data['fechaRegistro'] as Timestamp).toDate();
-
-        if (fecha.month == ahora.month && fecha.year == ahora.year) {
-          total += double.tryParse(data['monto'].toString()) ?? 0;
-        }
-      }
-
-      return total;
-    });
-  }
-
-  Stream<Map<String, dynamic>?> clienteDestacado() {
-    return FirebaseFirestore.instance.collection('ventas').snapshots().map((
-      snapshot,
-    ) {
-      final Map<String, double> totales = {};
-
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        if (!puedeVerDocumento(data)) continue;
-
-        final cliente = (data['cliente'] ?? 'Sin cliente').toString();
-        final monto = double.tryParse(data['monto'].toString()) ?? 0;
-
-        if (cliente.trim().isEmpty) continue;
-
-        totales[cliente] = (totales[cliente] ?? 0) + monto;
-      }
-
-      if (totales.isEmpty) return null;
-
-      final clienteTop = totales.entries.reduce(
-        (a, b) => a.value > b.value ? a : b,
-      );
-
-      return {'cliente': clienteTop.key, 'total': clienteTop.value};
-    });
-  }
-
-  Stream<int> contarSeguimientosPendientes() {
-    return FirebaseFirestore.instance
-        .collection('seguimientos')
-        .where('estado', isEqualTo: 'Pendiente')
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.where((doc) {
-            final data = doc.data();
-            return puedeVerDocumento(data);
-          }).length;
-        });
   }
 
   String formatoLempiras(num valor) {
@@ -635,13 +413,6 @@ class _InicioPantallaState extends State<InicioPantalla> {
         );
       },
     );
-  }
-
-  bool esDelMesActual(dynamic valor) {
-    if (valor is! Timestamp) return false;
-    final fecha = valor.toDate();
-    final ahora = DateTime.now();
-    return fecha.year == ahora.year && fecha.month == ahora.month;
   }
 
   Widget dashboardAdministrador() {
@@ -1260,30 +1031,6 @@ class _InicioPantallaState extends State<InicioPantalla> {
     ];
 
     return colores[index % colores.length];
-  }
-
-  String etapaOportunidad(Map<String, dynamic> cliente) {
-    final valor =
-        (cliente['etapa'] ??
-                cliente['etapaOportunidad'] ??
-                cliente['estadoOportunidad'] ??
-                cliente['estado'] ??
-                cliente['estadoCliente'] ??
-                'Prospecto')
-            .toString()
-            .trim()
-            .toLowerCase();
-
-    if (valor.contains('contacto')) return 'Contacto inicial';
-    if (valor.contains('propuesta')) return 'Propuesta';
-    if (valor.contains('negoci')) return 'Negociacion';
-    if (valor.contains('cierre') ||
-        valor.contains('cerrada') ||
-        valor == 'cliente') {
-      return 'Cierre';
-    }
-
-    return 'Prospecto';
   }
 
   BarChartGroupData barraEstado(int x, double y, Color color) {
