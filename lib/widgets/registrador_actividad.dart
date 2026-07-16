@@ -1,16 +1,13 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import '../repositories/usuarios_repository.dart';
 
 class RegistradorActividad extends StatefulWidget {
   final Widget child;
 
-  const RegistradorActividad({
-    super.key,
-    required this.child,
-  });
+  const RegistradorActividad({super.key, required this.child});
 
   @override
   State<RegistradorActividad> createState() => _RegistradorActividadState();
@@ -18,6 +15,7 @@ class RegistradorActividad extends StatefulWidget {
 
 class _RegistradorActividadState extends State<RegistradorActividad>
     with WidgetsBindingObserver {
+  final UsuariosRepository _usuariosRepository = UsuariosRepository();
   Timer? _temporizador;
 
   @override
@@ -32,17 +30,8 @@ class _RegistradorActividadState extends State<RegistradorActividad>
   }
 
   Future<void> _registrarActividad() async {
-    final usuario = FirebaseAuth.instance.currentUser;
-    if (usuario == null) return;
-
     try {
-      await FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(usuario.uid)
-          .set(
-        {'ultimaActividad': FieldValue.serverTimestamp()},
-        SetOptions(merge: true),
-      );
+      await _usuariosRepository.registrarActividadActual();
     } catch (_) {
       // La actividad se volvera a intentar en el siguiente intervalo.
     }

@@ -31,6 +31,15 @@ class UsuariosRepository {
 
   String? get usuarioActualId => _auth.currentUser?.uid;
 
+  Future<void> registrarActividadActual() {
+    final uid = usuarioActualId;
+    if (uid == null) return Future.value();
+
+    return _usuarios.doc(uid).set({
+      'ultimaActividad': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   Stream<UsuarioModel?> escucharUsuarioActual() {
     final uid = usuarioActualId;
     if (uid == null) return Stream.value(null);
