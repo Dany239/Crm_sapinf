@@ -6,7 +6,7 @@
 
     
     <application
-        android:label="crm_sapinf"
+        android:label="SAPINF CRM"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

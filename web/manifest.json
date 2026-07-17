@@ -1,11 +1,11 @@
 {
-    "name": "crm_sapinf",
-    "short_name": "crm_sapinf",
+    "name": "SAPINF CRM",
+    "short_name": "SAPINF CRM",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Sistema CRM comercial de SAPINF.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
