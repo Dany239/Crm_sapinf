@@ -6,15 +6,37 @@ import '../models/seguimiento_model.dart';
 import '../repositories/seguimientos_repository.dart';
 import '../servicios/sesion_usuario.dart';
 
+class SeguimientosSesionViewData {
+  const SeguimientosSesionViewData({
+    required this.uid,
+    required this.esAdministrador,
+  });
+
+  factory SeguimientosSesionViewData.fromSesion(SesionUsuario sesion) {
+    return SeguimientosSesionViewData(
+      uid: sesion.uid,
+      esAdministrador: sesion.esAdministrador,
+    );
+  }
+
+  final String uid;
+  final bool esAdministrador;
+}
+
 class SeguimientosViewModel extends ChangeNotifier {
   final SeguimientosRepository _seguimientosRepository;
 
   SeguimientosViewModel({SeguimientosRepository? seguimientosRepository})
     : _seguimientosRepository =
-          seguimientosRepository ?? SeguimientosRepository();
+          seguimientosRepository ?? SeguimientosRepository() {
+    sesionFuture = obtenerSesionUsuario().then(
+      SeguimientosSesionViewData.fromSesion,
+    );
+  }
 
   String busqueda = '';
   String filtroEstado = 'Todos';
+  late final Future<SeguimientosSesionViewData> sesionFuture;
 
   Stream<List<SeguimientoModel>> get seguimientosStream =>
       _seguimientosRepository.escucharSeguimientos();
@@ -36,7 +58,7 @@ class SeguimientosViewModel extends ChangeNotifier {
 
   List<SeguimientoModel> filtrarSeguimientos(
     List<SeguimientoModel> seguimientos,
-    SesionUsuario sesion,
+    SeguimientosSesionViewData sesion,
   ) {
     return seguimientos.where((seguimiento) {
       if (!sesion.esAdministrador && seguimiento.vendedorId != sesion.uid) {

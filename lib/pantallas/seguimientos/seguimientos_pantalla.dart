@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/seguimiento_model.dart';
-import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/seguimientos_viewmodel.dart';
 import 'agregar_seguimiento_pantalla.dart';
 import 'editar_seguimiento_pantalla.dart';
@@ -16,13 +15,11 @@ class SeguimientosPantalla extends StatefulWidget {
 
 class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
   final buscarController = TextEditingController();
-  late final Future<SesionUsuario> sesionFuture;
   late final SeguimientosViewModel viewModel;
 
   @override
   void initState() {
     super.initState();
-    sesionFuture = obtenerSesionUsuario();
     viewModel = SeguimientosViewModel();
   }
 
@@ -378,8 +375,8 @@ class _SeguimientosPantallaState extends State<SeguimientosPantalla> {
               );
             },
           ),
-          body: FutureBuilder<SesionUsuario>(
-            future: sesionFuture,
+          body: FutureBuilder<SeguimientosSesionViewData>(
+            future: viewModel.sesionFuture,
             builder: (context, sesionSnapshot) {
               if (!sesionSnapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
