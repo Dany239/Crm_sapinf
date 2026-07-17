@@ -9,6 +9,7 @@ import '../servicios/sesion_usuario.dart';
 class AgregarSeguimientoViewModel extends ChangeNotifier {
   final SeguimientosRepository _seguimientosRepository;
   final ClientesRepository _clientesRepository;
+  late final Future<SesionUsuario> _sesionFuture;
 
   AgregarSeguimientoViewModel({
     SeguimientosRepository? seguimientosRepository,
@@ -19,7 +20,9 @@ class AgregarSeguimientoViewModel extends ChangeNotifier {
            seguimientosRepository ?? SeguimientosRepository(),
        _clientesRepository = clientesRepository ?? ClientesRepository(),
        clienteIdSeleccionado = clienteIdInicial,
-       clienteNombreSeleccionado = clienteNombreInicial;
+       clienteNombreSeleccionado = clienteNombreInicial {
+    _sesionFuture = obtenerSesionUsuario();
+  }
 
   String? clienteIdSeleccionado;
   String? clienteNombreSeleccionado;
@@ -29,7 +32,12 @@ class AgregarSeguimientoViewModel extends ChangeNotifier {
   bool cargando = false;
   String? mensajeError;
 
-  Stream<List<ClienteModel>> escucharClientesPorSesion(SesionUsuario sesion) {
+  Stream<List<ClienteModel>> get clientesDisponiblesStream async* {
+    final sesion = await _sesionFuture;
+    yield* _escucharClientesPorSesion(sesion);
+  }
+
+  Stream<List<ClienteModel>> _escucharClientesPorSesion(SesionUsuario sesion) {
     return _clientesRepository.escucharClientes().map(
       (clientes) => clientes
           .where(
@@ -89,7 +97,7 @@ class AgregarSeguimientoViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final sesion = await obtenerSesionUsuario();
+      final sesion = await _sesionFuture;
       final seguimiento = SeguimientoModel(
         clienteId: clienteIdSeleccionado,
         cliente: clienteNombreSeleccionado,

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/cliente_model.dart';
-import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/agregar_seguimiento_viewmodel.dart';
 
 class AgregarSeguimientoPantalla extends StatefulWidget {
@@ -25,7 +24,6 @@ class _AgregarSeguimientoPantallaState
   final comentarioController = TextEditingController();
   final proximaGestionController = TextEditingController();
   late final AgregarSeguimientoViewModel viewModel;
-  late final Future<SesionUsuario> sesionFuture;
 
   @override
   void initState() {
@@ -34,7 +32,6 @@ class _AgregarSeguimientoPantallaState
       clienteIdInicial: widget.clienteIdInicial,
       clienteNombreInicial: widget.clienteNombreInicial,
     );
-    sesionFuture = obtenerSesionUsuario();
   }
 
   @override
@@ -258,71 +255,55 @@ class _AgregarSeguimientoPantallaState
       );
     }
 
-    return FutureBuilder<SesionUsuario>(
-      future: sesionFuture,
-      builder: (context, sesionSnapshot) {
-        if (!sesionSnapshot.hasData) {
+    return StreamBuilder<List<ClienteModel>>(
+      stream: viewModel.clientesDisponiblesStream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
           return const Padding(
             padding: EdgeInsets.all(16),
             child: CircularProgressIndicator(),
           );
         }
 
-        final sesion = sesionSnapshot.data!;
+        final clientes = snapshot.data ?? [];
 
-        return StreamBuilder<List<ClienteModel>>(
-          stream: viewModel.escucharClientesPorSesion(sesion),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(),
-              );
-            }
-
-            final clientes = snapshot.data ?? [];
-
-            return DropdownButtonFormField<String>(
-              isExpanded: true,
-              dropdownColor: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              menuMaxHeight: 320,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded),
-              initialValue:
-                  clientes.any(
-                    (cliente) => cliente.id == viewModel.clienteIdSeleccionado,
-                  )
-                  ? viewModel.clienteIdSeleccionado
-                  : null,
-              decoration: campoDecoracion(
-                label: 'Cliente',
+        return DropdownButtonFormField<String>(
+          isExpanded: true,
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          menuMaxHeight: 320,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          initialValue:
+              clientes.any(
+                (cliente) => cliente.id == viewModel.clienteIdSeleccionado,
+              )
+              ? viewModel.clienteIdSeleccionado
+              : null,
+          decoration: campoDecoracion(
+            label: 'Cliente',
+            icono: Icons.person,
+            hintText: clientes.isEmpty ? 'No hay clientes disponibles' : null,
+          ),
+          items: clientes.map((cliente) {
+            return DropdownMenuItem<String>(
+              value: cliente.id,
+              child: opcionDesplegable(
                 icono: Icons.person,
-                hintText: clientes.isEmpty
-                    ? 'No hay clientes disponibles'
-                    : null,
+                texto: cliente.nombre,
+                color: const Color(0xFF1565C0),
               ),
-              items: clientes.map((cliente) {
-                return DropdownMenuItem<String>(
-                  value: cliente.id,
-                  child: opcionDesplegable(
-                    icono: Icons.person,
-                    texto: cliente.nombre,
-                    color: const Color(0xFF1565C0),
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value == null) return;
+            );
+          }).toList(),
+          onChanged: (value) {
+            if (value == null) return;
 
-                final cliente = clientes.firstWhere(
-                  (cliente) => cliente.id == value,
-                );
+            final cliente = clientes.firstWhere(
+              (cliente) => cliente.id == value,
+            );
 
-                viewModel.seleccionarCliente(
-                  clienteId: cliente.id ?? '',
-                  clienteNombre: cliente.nombre,
-                );
-              },
+            viewModel.seleccionarCliente(
+              clienteId: cliente.id ?? '',
+              clienteNombre: cliente.nombre,
             );
           },
         );
