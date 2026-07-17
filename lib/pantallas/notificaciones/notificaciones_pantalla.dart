@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/notificacion_model.dart';
 import '../../viewmodels/notificaciones_viewmodel.dart';
+import '../clientes/detalle_cliente_pantalla.dart';
+import '../seguimientos/editar_seguimiento_pantalla.dart';
+import '../ventas/editar_venta_pantalla.dart';
 
 class NotificacionesPantalla extends StatefulWidget {
   const NotificacionesPantalla({super.key});
@@ -45,6 +48,58 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
         return Colors.red;
       default:
         return const Color(0xFF1565C0);
+    }
+  }
+
+  Future<void> abrirNotificacion(
+    NotificacionModel notificacion,
+    NotificacionesSesionViewData sesion,
+  ) async {
+    await viewModel.marcarLeida(notificacion, sesion.uid);
+
+    final destino = await viewModel.obtenerDestino(notificacion);
+    if (!mounted) return;
+
+    if (destino == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Esta notificación no tiene una pantalla vinculada'),
+        ),
+      );
+      return;
+    }
+
+    final pantalla = pantallaDestino(destino);
+    if (pantalla == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se encontró una pantalla para esta notificación'),
+        ),
+      );
+      return;
+    }
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    navigator.pop();
+    await navigator.push(MaterialPageRoute(builder: (_) => pantalla));
+  }
+
+  Widget? pantallaDestino(NotificacionDestinoViewData destino) {
+    switch (destino.coleccion) {
+      case 'clientes':
+        return DetalleClientePantalla(
+          clienteId: destino.id,
+          cliente: destino.data,
+        );
+      case 'ventas':
+        return EditarVentaPantalla(ventaId: destino.id, venta: destino.data);
+      case 'seguimientos':
+        return EditarSeguimientoPantalla(
+          seguimientoId: destino.id,
+          seguimiento: destino.data,
+        );
+      default:
+        return null;
     }
   }
 
@@ -206,7 +261,7 @@ class _NotificacionesPantallaState extends State<NotificacionesPantalla> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: () => viewModel.marcarLeida(notificacion, sesion.uid),
+      onTap: () => abrirNotificacion(notificacion, sesion),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(13),

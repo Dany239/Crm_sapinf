@@ -41,4 +41,19 @@ class NotificacionesRepository {
 
     if (cambios > 0) await batch.commit();
   }
+
+  Future<Map<String, dynamic>?> obtenerDocumentoReferencia({
+    required String coleccion,
+    required String id,
+  }) async {
+    final documento = await FirebaseFirestore.instance
+        .collection(coleccion)
+        .doc(id)
+        .get();
+
+    final data = documento.data();
+    if (!documento.exists || data == null) return null;
+
+    return data;
+  }
 }

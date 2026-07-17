@@ -29,6 +29,18 @@ class NotificacionesSesionViewData {
   }
 }
 
+class NotificacionDestinoViewData {
+  const NotificacionDestinoViewData({
+    required this.coleccion,
+    required this.id,
+    required this.data,
+  });
+
+  final String coleccion;
+  final String id;
+  final Map<String, dynamic> data;
+}
+
 class NotificacionesViewModel extends ChangeNotifier {
   NotificacionesViewModel({NotificacionesRepository? repository})
     : _repository = repository ?? NotificacionesRepository() {
@@ -69,6 +81,30 @@ class NotificacionesViewModel extends ChangeNotifier {
 
   Future<void> marcarLeida(NotificacionModel notificacion, String uid) {
     return _repository.marcarLeida(notificacion.id, uid);
+  }
+
+  Future<NotificacionDestinoViewData?> obtenerDestino(
+    NotificacionModel notificacion,
+  ) async {
+    final coleccion = notificacion.referenciaColeccion;
+    final id = notificacion.referenciaId;
+
+    if (coleccion == null || coleccion.isEmpty || id == null || id.isEmpty) {
+      return null;
+    }
+
+    final data = await _repository.obtenerDocumentoReferencia(
+      coleccion: coleccion,
+      id: id,
+    );
+
+    if (data == null) return null;
+
+    return NotificacionDestinoViewData(
+      coleccion: coleccion,
+      id: id,
+      data: data,
+    );
   }
 
   Future<void> marcarTodasComoLeidas(
