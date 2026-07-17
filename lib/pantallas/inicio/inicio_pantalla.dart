@@ -1135,6 +1135,13 @@ class _InicioPantallaState extends State<InicioPantalla> {
     return viewModel.nombreUsuarioActual();
   }
 
+  String nombreUsuarioDesdeData(Map<String, dynamic>? data) {
+    final nombre = data?['nombre']?.toString().trim();
+    if (nombre != null && nombre.isNotEmpty) return nombre;
+
+    return nombreUsuario();
+  }
+
   ImageProvider? fotoPerfilDesdeData(Map<String, dynamic>? data) {
     final fotoBase64 = data?['fotoBase64']?.toString();
 
@@ -1427,7 +1434,6 @@ class _InicioPantallaState extends State<InicioPantalla> {
   @override
   Widget build(BuildContext context) {
     final saludo = saludoSegunHora();
-    final nombre = nombreUsuario();
 
     if (rol.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -1525,15 +1531,24 @@ class _InicioPantallaState extends State<InicioPantalla> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '$saludo, $nombre',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
+                        StreamBuilder<Map<String, dynamic>?>(
+                          stream: viewModel.usuarioActualDataStream(),
+                          builder: (context, snapshot) {
+                            final nombre = nombreUsuarioDesdeData(
+                              snapshot.data,
+                            );
+
+                            return Text(
+                              '$saludo, $nombre',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 2),
                         Text(
