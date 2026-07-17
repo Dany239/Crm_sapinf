@@ -1,8 +1,5 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../models/servicio_model.dart';
 import '../viewmodels/editar_servicio_viewmodel.dart';
@@ -43,23 +40,15 @@ class _EditarServicioPantallaState extends State<EditarServicioPantalla> {
   }
 
   Future<void> seleccionarLogo() async {
-    final imagen = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 72,
-      maxWidth: 600,
-      maxHeight: 600,
-    );
-    if (imagen == null) return;
-
-    final bytes = await imagen.readAsBytes();
+    final error = await viewModel.seleccionarLogo();
     if (!mounted) return;
-    if (bytes.lengthInBytes > 750000) {
+    if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Selecciona una imagen más liviana')),
       );
       return;
     }
-    setState(() => viewModel.cambiarLogo(base64Encode(bytes)));
+    setState(() {});
   }
 
   Future<void> actualizarServicio() async {

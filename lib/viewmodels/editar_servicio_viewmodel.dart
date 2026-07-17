@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/servicio_model.dart';
 import '../repositories/servicios_repository.dart';
@@ -18,6 +21,25 @@ class EditarServicioViewModel extends ChangeNotifier {
   void cambiarLogo(String valor) {
     logoBase64 = valor;
     notifyListeners();
+  }
+
+  Future<String?> seleccionarLogo() async {
+    final imagen = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 72,
+      maxWidth: 600,
+      maxHeight: 600,
+    );
+
+    if (imagen == null) return null;
+
+    final bytes = await imagen.readAsBytes();
+    if (bytes.lengthInBytes > 750000) {
+      return 'Selecciona una imagen más liviana';
+    }
+
+    cambiarLogo(base64Encode(bytes));
+    return null;
   }
 
   String? validar({required String nombre, required String descripcion}) {
