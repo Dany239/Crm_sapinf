@@ -1142,6 +1142,12 @@ class _InicioPantallaState extends State<InicioPantalla> {
     return nombreUsuario();
   }
 
+  String nombreCorto(String nombre) {
+    final partes = nombre.trim().split(RegExp(r'\s+'));
+    if (partes.isEmpty || partes.first.isEmpty) return nombre;
+    return partes.first;
+  }
+
   ImageProvider? fotoPerfilDesdeData(Map<String, dynamic>? data) {
     final fotoBase64 = data?['fotoBase64']?.toString();
 
@@ -1495,35 +1501,32 @@ class _InicioPantallaState extends State<InicioPantalla> {
           children: [
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF1565C0), Color(0xFF29B6F6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.grey.shade200),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF1565C0).withValues(alpha: 0.22),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
+                    color: Colors.black.withValues(alpha: 0.045),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(16),
+                      color: const Color(0xFFFFF8D8),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(
                       Icons.wb_sunny,
                       color: Color(0xFFFFD54F),
-                      size: 27,
+                      size: 23,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -1534,8 +1537,8 @@ class _InicioPantallaState extends State<InicioPantalla> {
                         StreamBuilder<Map<String, dynamic>?>(
                           stream: viewModel.usuarioActualDataStream(),
                           builder: (context, snapshot) {
-                            final nombre = nombreUsuarioDesdeData(
-                              snapshot.data,
+                            final nombre = nombreCorto(
+                              nombreUsuarioDesdeData(snapshot.data),
                             );
 
                             return Text(
@@ -1544,20 +1547,22 @@ class _InicioPantallaState extends State<InicioPantalla> {
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.poppins(
                                 fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
+                                fontWeight: FontWeight.w400,
+                                color: Colors.grey.shade700,
                               ),
                             );
                           },
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Aquí tienes un resumen de tu negocio',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: Colors.white.withValues(alpha: 0.85),
+                        const SizedBox.shrink(),
+                        Offstage(
+                          child: Text(
+                            'Aquí tienes un resumen de tu negocio',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
                           ),
                         ),
                       ],
