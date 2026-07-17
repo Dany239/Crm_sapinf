@@ -37,20 +37,20 @@ class _NavegacionPantallaState extends State<NavegacionPantalla> {
 
   List<Widget> pantallasPorRol(bool accesoAdministrador) {
     if (accesoAdministrador) {
-      return const [
-        InicioPantalla(),
-        ClientesPantalla(),
-        VentasPantalla(),
-        ReportesPantalla(),
-        PerfilPantalla(),
+      return [
+        const InicioPantalla(),
+        const ClientesPantalla(),
+        const VentasPantalla(),
+        const ReportesPantalla(),
+        PerfilPantalla(onVolver: () => viewModel.cambiarIndice(0)),
       ];
     }
 
-    return const [
-      InicioPantalla(),
-      ClientesPantalla(),
-      VentasPantalla(),
-      PerfilPantalla(),
+    return [
+      const InicioPantalla(),
+      const ClientesPantalla(),
+      const VentasPantalla(),
+      PerfilPantalla(onVolver: () => viewModel.cambiarIndice(0)),
     ];
   }
 
@@ -113,15 +113,22 @@ class _NavegacionPantallaState extends State<NavegacionPantalla> {
 
         viewModel.asegurarIndiceValido(pantallas.length);
 
-        return Scaffold(
-          body: pantallas[viewModel.indiceActual],
-          bottomNavigationBar: BottomNavigationBar(
-            currentIndex: viewModel.indiceActual,
-            selectedItemColor: const Color(0xFF1565C0),
-            unselectedItemColor: Colors.grey,
-            type: BottomNavigationBarType.fixed,
-            onTap: viewModel.cambiarIndice,
-            items: items,
+        return PopScope(
+          canPop: viewModel.indiceActual == 0,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) return;
+            viewModel.cambiarIndice(0);
+          },
+          child: Scaffold(
+            body: pantallas[viewModel.indiceActual],
+            bottomNavigationBar: BottomNavigationBar(
+              currentIndex: viewModel.indiceActual,
+              selectedItemColor: const Color(0xFF1565C0),
+              unselectedItemColor: Colors.grey,
+              type: BottomNavigationBarType.fixed,
+              onTap: viewModel.cambiarIndice,
+              items: items,
+            ),
           ),
         );
       },

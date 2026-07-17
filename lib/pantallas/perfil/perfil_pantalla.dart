@@ -4,7 +4,9 @@ import '../../models/usuario_model.dart';
 import '../../viewmodels/perfil_viewmodel.dart';
 
 class PerfilPantalla extends StatefulWidget {
-  const PerfilPantalla({super.key});
+  const PerfilPantalla({super.key, this.onVolver});
+
+  final VoidCallback? onVolver;
 
   @override
   State<PerfilPantalla> createState() => _PerfilPantallaState();
@@ -21,6 +23,17 @@ class _PerfilPantallaState extends State<PerfilPantalla> {
 
   Future<void> cerrarSesion(BuildContext context) async {
     await viewModel.cerrarSesion();
+  }
+
+  void volver() {
+    if (widget.onVolver != null) {
+      widget.onVolver!();
+      return;
+    }
+
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
   }
 
   Future<void> enviarCambioPassword(BuildContext context) async {
@@ -347,7 +360,7 @@ class _PerfilPantallaState extends State<PerfilPantalla> {
                                 Icons.arrow_back,
                                 color: Colors.white,
                               ),
-                              onPressed: () => Navigator.pop(context),
+                              onPressed: volver,
                             ),
                             const Expanded(
                               child: Center(
