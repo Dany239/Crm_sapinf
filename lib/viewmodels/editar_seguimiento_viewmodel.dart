@@ -11,6 +11,7 @@ class EditarSeguimientoViewModel extends ChangeNotifier {
   final ClientesRepository _clientesRepository;
   final String seguimientoId;
   final SeguimientoModel seguimientoOriginal;
+  late final Future<SesionUsuario> _sesionFuture;
 
   EditarSeguimientoViewModel({
     required this.seguimientoId,
@@ -24,6 +25,7 @@ class EditarSeguimientoViewModel extends ChangeNotifier {
          seguimiento,
          id: seguimientoId,
        ) {
+    _sesionFuture = obtenerSesionUsuario();
     clienteIdSeleccionado = seguimientoOriginal.clienteId;
     clienteNombreSeleccionado = seguimientoOriginal.cliente;
     fechaProximaSeleccionada =
@@ -42,7 +44,12 @@ class EditarSeguimientoViewModel extends ChangeNotifier {
   bool eliminando = false;
   String? mensajeError;
 
-  Stream<List<ClienteModel>> escucharClientesPorSesion(SesionUsuario sesion) {
+  Stream<List<ClienteModel>> get clientesDisponiblesStream async* {
+    final sesion = await _sesionFuture;
+    yield* _escucharClientesPorSesion(sesion);
+  }
+
+  Stream<List<ClienteModel>> _escucharClientesPorSesion(SesionUsuario sesion) {
     return _clientesRepository.escucharClientes().map(
       (clientes) => clientes
           .where(
@@ -132,7 +139,7 @@ class EditarSeguimientoViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final sesion = await obtenerSesionUsuario();
+      final sesion = await _sesionFuture;
       final seguimiento = SeguimientoModel(
         clienteId: clienteIdSeleccionado,
         cliente: clienteNombreSeleccionado,

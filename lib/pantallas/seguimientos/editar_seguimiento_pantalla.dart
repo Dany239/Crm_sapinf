@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/cliente_model.dart';
-import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/editar_seguimiento_viewmodel.dart';
 
 class EditarSeguimientoPantalla extends StatefulWidget {
@@ -24,7 +23,6 @@ class _EditarSeguimientoPantallaState extends State<EditarSeguimientoPantalla> {
   late final EditarSeguimientoViewModel viewModel;
   late final TextEditingController comentarioController;
   late final TextEditingController proximaGestionController;
-  late final Future<SesionUsuario> sesionFuture;
 
   @override
   void initState() {
@@ -33,7 +31,6 @@ class _EditarSeguimientoPantallaState extends State<EditarSeguimientoPantalla> {
       seguimientoId: widget.seguimientoId,
       seguimiento: widget.seguimiento,
     );
-    sesionFuture = obtenerSesionUsuario();
     comentarioController = TextEditingController(
       text: widget.seguimiento['comentario']?.toString() ?? '',
     );
@@ -375,10 +372,10 @@ class _EditarSeguimientoPantallaState extends State<EditarSeguimientoPantalla> {
   }
 
   Widget campoCliente() {
-    return FutureBuilder<SesionUsuario>(
-      future: sesionFuture,
-      builder: (context, sesionSnapshot) {
-        if (!sesionSnapshot.hasData) {
+    return StreamBuilder<List<ClienteModel>>(
+      stream: viewModel.clientesDisponiblesStream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
           return Container(
             height: 58,
             alignment: Alignment.center,
@@ -386,62 +383,45 @@ class _EditarSeguimientoPantallaState extends State<EditarSeguimientoPantalla> {
           );
         }
 
-        final sesion = sesionSnapshot.data!;
+        final clientes = snapshot.data ?? [];
 
-        return StreamBuilder<List<ClienteModel>>(
-          stream: viewModel.escucharClientesPorSesion(sesion),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return Container(
-                height: 58,
-                alignment: Alignment.center,
-                child: const CircularProgressIndicator(),
-              );
-            }
-
-            final clientes = snapshot.data ?? [];
-
-            return DropdownButtonFormField<String>(
-              isExpanded: true,
-              dropdownColor: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              menuMaxHeight: 280,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded),
-              initialValue:
-                  clientes.any(
-                    (cliente) => cliente.id == viewModel.clienteIdSeleccionado,
-                  )
-                  ? viewModel.clienteIdSeleccionado
-                  : null,
-              decoration: campoDecoracion(
-                label: 'Cliente',
+        return DropdownButtonFormField<String>(
+          isExpanded: true,
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          menuMaxHeight: 280,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          initialValue:
+              clientes.any(
+                (cliente) => cliente.id == viewModel.clienteIdSeleccionado,
+              )
+              ? viewModel.clienteIdSeleccionado
+              : null,
+          decoration: campoDecoracion(
+            label: 'Cliente',
+            icono: Icons.person_rounded,
+            hintText: clientes.isEmpty ? 'No hay clientes disponibles' : null,
+          ),
+          items: clientes.map((cliente) {
+            return DropdownMenuItem<String>(
+              value: cliente.id,
+              child: opcionDesplegable(
                 icono: Icons.person_rounded,
-                hintText: clientes.isEmpty
-                    ? 'No hay clientes disponibles'
-                    : null,
+                texto: cliente.nombre,
+                color: const Color(0xFF1565C0),
               ),
-              items: clientes.map((cliente) {
-                return DropdownMenuItem<String>(
-                  value: cliente.id,
-                  child: opcionDesplegable(
-                    icono: Icons.person_rounded,
-                    texto: cliente.nombre,
-                    color: const Color(0xFF1565C0),
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value == null) return;
+            );
+          }).toList(),
+          onChanged: (value) {
+            if (value == null) return;
 
-                final cliente = clientes.firstWhere(
-                  (cliente) => cliente.id == value,
-                );
+            final cliente = clientes.firstWhere(
+              (cliente) => cliente.id == value,
+            );
 
-                viewModel.seleccionarCliente(
-                  clienteId: cliente.id ?? '',
-                  clienteNombre: cliente.nombre,
-                );
-              },
+            viewModel.seleccionarCliente(
+              clienteId: cliente.id ?? '',
+              clienteNombre: cliente.nombre,
             );
           },
         );
