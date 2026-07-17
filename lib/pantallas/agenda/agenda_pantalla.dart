@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../seguimientos/agregar_seguimiento_pantalla.dart';
 import '../seguimientos/editar_seguimiento_pantalla.dart';
 import '../../models/seguimiento_model.dart';
-import '../../servicios/sesion_usuario.dart';
 import '../../viewmodels/agenda_viewmodel.dart';
 
 class AgendaPantalla extends StatefulWidget {
@@ -16,13 +15,6 @@ class AgendaPantalla extends StatefulWidget {
 
 class _AgendaPantallaState extends State<AgendaPantalla> {
   final AgendaViewModel viewModel = AgendaViewModel();
-  late Future<SesionUsuario> sesionFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    sesionFuture = obtenerSesionUsuario();
-  }
 
   @override
   void dispose() {
@@ -468,8 +460,8 @@ class _AgendaPantallaState extends State<AgendaPantalla> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                return FutureBuilder<SesionUsuario>(
-                  future: sesionFuture,
+                return FutureBuilder<AgendaSesionViewData>(
+                  future: viewModel.sesionFuture,
                   builder: (context, sesionSnapshot) {
                     if (!sesionSnapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());

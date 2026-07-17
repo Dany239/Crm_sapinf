@@ -4,14 +4,34 @@ import '../models/seguimiento_model.dart';
 import '../repositories/seguimientos_repository.dart';
 import '../servicios/sesion_usuario.dart';
 
+class AgendaSesionViewData {
+  const AgendaSesionViewData({
+    required this.uid,
+    required this.esAdministrador,
+  });
+
+  factory AgendaSesionViewData.fromSesion(SesionUsuario sesion) {
+    return AgendaSesionViewData(
+      uid: sesion.uid,
+      esAdministrador: sesion.esAdministrador,
+    );
+  }
+
+  final String uid;
+  final bool esAdministrador;
+}
+
 class AgendaViewModel extends ChangeNotifier {
   AgendaViewModel({SeguimientosRepository? seguimientosRepository})
     : _seguimientosRepository =
-          seguimientosRepository ?? SeguimientosRepository();
+          seguimientosRepository ?? SeguimientosRepository() {
+    sesionFuture = obtenerSesionUsuario().then(AgendaSesionViewData.fromSesion);
+  }
 
   final SeguimientosRepository _seguimientosRepository;
 
   DateTime fechaSeleccionada = DateTime.now();
+  late final Future<AgendaSesionViewData> sesionFuture;
 
   Stream<List<SeguimientoModel>> get seguimientosStream {
     return _seguimientosRepository.escucharSeguimientos();
@@ -73,7 +93,7 @@ class AgendaViewModel extends ChangeNotifier {
 
   List<SeguimientoModel> filtrarPorFecha(
     List<SeguimientoModel> seguimientos,
-    SesionUsuario sesion,
+    AgendaSesionViewData sesion,
   ) {
     final filtrados = seguimientos.where((seguimiento) {
       if (!sesion.esAdministrador && seguimiento.vendedorId != sesion.uid) {
